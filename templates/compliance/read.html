@@ -1,0 +1,137 @@
+{% extends "compliance/base.html" %}
+{% load static %}
+
+{% block content %}
+
+<div class="row">
+    <div>
+        <h1>{{ document.title }}</h1>
+        <p>Published Version {{ version.version }}</p>
+    </div>
+
+    {% if record %}
+        <span class="badge">{{ record.get_status_display }}</span>
+    {% endif %}
+</div>
+
+<section class="viewer">
+    {% if preview %}
+
+    <div
+        id="controlled-pdf-viewer"
+        class="controlled-pdf-viewer"
+        data-pdf-url="{% url 'stream_document' version.id %}"
+    >
+
+        <div class="pdf-toolbar">
+
+            <div class="pdf-navigation">
+
+                <button
+                    type="button"
+                    id="pdf-previous"
+                    class="pdf-control"
+                >
+                    Previous
+                </button>
+
+                <span class="pdf-page-info">
+                    Page
+                    <strong id="pdf-page-number">1</strong>
+                    of
+                    <strong id="pdf-page-count">...</strong>
+                </span>
+
+                <button
+                    type="button"
+                    id="pdf-next"
+                    class="pdf-control"
+                >
+                    Next
+                </button>
+
+            </div>
+
+            <div class="pdf-zoom">
+
+                <button
+                    type="button"
+                    id="pdf-zoom-out"
+                    class="pdf-control"
+                    title="Zoom out"
+                >
+                    −
+                </button>
+
+                <button
+                    type="button"
+                    id="pdf-zoom-in"
+                    class="pdf-control"
+                    title="Zoom in"
+                >
+                    +
+                </button>
+
+            </div>
+
+        </div>
+
+        <div class="pdf-canvas-container">
+            <canvas id="controlled-pdf-canvas"></canvas>
+        </div>
+
+    </div>
+
+    {% else %}
+
+    <div class="empty">
+        Preview unavailable for this file format. Contact Compliance.
+    </div>
+
+    {% endif %}
+</section>
+
+{% if preview %}
+<script
+    type="module"
+    src="{% static 'js/controlled_pdf_viewer.js' %}">
+</script>
+{% endif %}
+
+{% if record %}
+<section class="card">
+
+    <p>
+        Started:
+        {{ record.started_at|default:"Not recorded" }}
+    </p>
+
+    {% if record.status != 'COMPLETED' %}
+
+        <form
+            method="post"
+            action="{% url 'finish_reading' version.id %}"
+        >
+            {% csrf_token %}
+
+            <button class="primary">
+                Finished Reading
+            </button>
+        </form>
+
+    {% else %}
+
+        <strong>
+            Reading completed and recorded.
+        </strong>
+
+        <p>
+            Completed: {{ record.completed_at }}
+        </p>
+
+    {% endif %}
+
+</section>
+{% endif %}
+
+{% endblock %}

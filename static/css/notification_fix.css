@@ -1,0 +1,5 @@
+/* Notification interaction fixes: use a real bell SVG instead of an emoji. */
+.notification-button svg.notification-bell-icon{width:20px;height:20px;display:block;stroke:currentColor;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.notification-button{cursor:pointer}
+.notification-item.unread,.notification-page-item.unread{font-weight:inherit}
+.notification-item:not(.unread) .notification-icon,.notification-page-item:not(.unread) .notification-icon{opacity:.68}

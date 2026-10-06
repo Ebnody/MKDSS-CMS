@@ -1,0 +1,113 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="csrf-token" content="{{ csrf_token }}">
+<meta name="theme-color" content="#0b2a4a">
+<link rel="icon" type="image/png" href="{% static 'img/mkdss-logo-icon.png' %}">
+<title>{% block title %}MKDSS Compliance Management System{% endblock %}</title>
+<link rel="stylesheet" href="{% static 'css/app.css' %}">
+<link rel="stylesheet" href="{% static 'css/mkdss_theme.css' %}">
+<link rel="stylesheet" href="{% static 'css/notification_fix.css' %}">
+<link rel="stylesheet" href="{% static 'css/mkdss_professional.css' %}">
+<script>try{document.documentElement.dataset.theme=localStorage.getItem('mkdss-theme')||'light'}catch(e){document.documentElement.dataset.theme='light'}</script>
+</head>
+<body>
+{% if user.is_authenticated %}
+<div class="mk-app">
+  <aside class="mk-sidebar" id="mk-sidebar">
+    <div class="mk-brand">
+      <div class="mk-logo-plate"><img src="{% static 'img/mkdss-logo.png' %}" alt="MKDSS Digital Security Solution"></div>
+      <div class="mk-brand-title">Compliance Management</div>
+    </div>
+
+    <div class="mk-user-card">
+      <div class="mk-avatar">{{ user.username|first|upper }}</div>
+      <div class="mk-user-meta">
+        <strong>{{ user.get_full_name|default:user.username }}</strong>
+        <span>{{ user.profile.get_role_display }}</span>
+      </div>
+      <span class="mk-online-dot" title="Active"></span>
+    </div>
+
+    <nav class="mk-nav" aria-label="Main navigation">
+      <a href="{% url 'dashboard' %}" class="mk-nav-item"><span class="mk-nav-icon">⌂</span><span>Dashboard</span></a>
+      {% if user.profile.role == 'SYSTEM_ADMIN' %}
+        <div class="mk-nav-label">ADMINISTRATION</div>
+        <a href="{% url 'admin_users' %}" class="mk-nav-item"><span class="mk-nav-icon">♙</span><span>User Management</span></a>
+        <a href="{% url 'admin_departments' %}" class="mk-nav-item"><span class="mk-nav-icon">▦</span><span>Departments</span></a>
+        <a href="{% url 'audit_logs' %}" class="mk-nav-item"><span class="mk-nav-icon">◷</span><span>Audit Log</span></a>
+        <a href="{% url 'admin_health' %}" class="mk-nav-item"><span class="mk-nav-icon">✓</span><span>System Health</span></a>
+        <a href="{% url 'admin_settings' %}" class="mk-nav-item"><span class="mk-nav-icon">⚙</span><span>Settings</span></a>
+        <a href="{% url 'admin_backup' %}" class="mk-nav-item"><span class="mk-nav-icon">⇩</span><span>Backup &amp; Restore</span></a>
+      {% elif user.profile.role == 'COMPLIANCE' %}
+        <div class="mk-nav-label">DOCUMENT CONTROL</div>
+        <a href="{% url 'compliance_documents' %}" class="mk-nav-item"><span class="mk-nav-icon">▤</span><span>Document Control</span></a>
+        <a href="{% url 'document_create' %}" class="mk-nav-item"><span class="mk-nav-icon">＋</span><span>New Document</span></a>
+        <a href="{% url 'upload_existing_document' %}" class="mk-nav-item"><span class="mk-nav-icon">⇧</span><span>Upload Existing Document</span></a>
+        <a href="{% url 'compliance_queue' %}" class="mk-nav-item"><span class="mk-nav-icon">☷</span><span>Request Queue</span></a>
+        <a href="{% url 'reports' %}" class="mk-nav-item"><span class="mk-nav-icon">▥</span><span>Reading Reports</span></a>
+        <a href="{% url 'audit_logs' %}" class="mk-nav-item"><span class="mk-nav-icon">◷</span><span>Audit Log</span></a>
+        <a href="{% url 'published_documents' %}" class="mk-nav-item"><span class="mk-nav-icon">▤</span><span>Published Documents</span></a>
+      {% elif user.profile.role == 'APPROVER' %}
+        <div class="mk-nav-label">APPROVAL</div>
+        <a href="{% url 'approval_queue' %}" class="mk-nav-item"><span class="mk-nav-icon">✓</span><span>Approval Queue</span></a>
+        <a href="{% url 'published_documents' %}" class="mk-nav-item"><span class="mk-nav-icon">▤</span><span>Published Documents</span></a>
+      {% elif user.profile.role == 'USER' %}
+        <div class="mk-nav-label">DOCUMENTS</div>
+        <a href="{% url 'published_documents' %}" class="mk-nav-item"><span class="mk-nav-icon">▤</span><span>Published Documents</span></a>
+        <a href="{% url 'requests' %}" class="mk-nav-item"><span class="mk-nav-icon">☷</span><span>My Requests</span></a>
+        <a href="{% url 'new_request' %}" class="mk-nav-item"><span class="mk-nav-icon">＋</span><span>New Document Request</span></a>
+        <a href="{% url 'change_request' %}" class="mk-nav-item"><span class="mk-nav-icon">↻</span><span>Change Request</span></a>
+      {% endif %}
+      <div class="mk-nav-label">SYSTEM</div>
+      <a href="{% url 'notifications' %}" class="mk-nav-item"><span class="mk-nav-icon">♢</span><span>Notifications</span>{% if notification_unread_count %}<b class="mk-nav-badge">{{ notification_unread_count }}</b>{% endif %}</a>
+    </nav>
+
+    <div class="mk-sidebar-bottom">
+      <button type="button" id="theme-toggle" class="mk-theme-toggle" aria-label="Toggle dark mode" aria-pressed="false"><span class="mk-theme-icon">☾</span><span>Dark mode</span></button>
+      <a href="{% url 'password_change' %}" class="mk-nav-item"><span class="mk-nav-icon">⚿</span><span>Change Password</span></a>
+      <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="mk-nav-item mk-signout"><span class="mk-nav-icon">↪</span><span>Sign Out</span></button></form>
+    </div>
+  </aside>
+
+  <section class="mk-main">
+    <header class="mk-topbar">
+      <div class="mk-top-left">
+        <button type="button" class="mk-menu-button" id="mk-menu-button" aria-label="Open navigation">☰</button>
+        <div class="mk-top-brand"><img src="{% static 'img/mkdss-logo.png' %}" alt="MKDSS"><div><strong>MKDSS</strong><span>Compliance Management System</span></div></div>
+        <div class="mk-search"><span>⌕</span><input type="search" placeholder="Search..." aria-label="Search"></div>
+      </div>
+      <div class="mk-top-actions">
+        <div class="mk-notification-wrap">
+          <button type="button" id="notification-button" class="notification-button" aria-label="Notifications" aria-expanded="false" title="Notifications">
+        <svg class="notification-bell-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path><path d="M10 21h4"></path></svg>
+        {% if notification_unread_count %}<span class="notification-badge">{{ notification_unread_count }}</span>{% endif %}
+      </button>
+          <div id="notification-panel" class="mk-notification-panel" aria-live="polite">
+            <div class="mk-notification-head"><div><strong>Notifications</strong><small>{% if notification_unread_count %}{{ notification_unread_count }} unread{% else %}All caught up{% endif %}</small></div><button type="button" id="mark-all-notifications" class="mk-text-button">Mark all as read</button></div>
+            <div class="mk-notification-list">
+              {% for item in notification_items %}
+              <a class="mk-notification-item {% if not item.is_read %}unread{% endif %}" data-notification-id="{{ item.pk }}" href="{{ item.url|default:'#' }}"><span class="mk-notification-icon">{% if 'PUBLISHED' in item.kind %}↑{% elif 'REJECTED' in item.kind %}×{% elif 'APPROVED' in item.kind %}✓{% else %}!{% endif %}</span><span><strong>{{ item.title }}</strong><small>{{ item.message }}</small><em>{{ item.created_at|timesince }} ago</em></span>{% if not item.is_read %}<i></i>{% endif %}</a>
+              {% empty %}<div class="mk-notification-empty">No notifications yet.</div>{% endfor %}
+            </div>
+            <div class="mk-notification-foot"><a href="{% url 'notifications' %}">View all notifications →</a></div>
+          </div>
+        </div>
+        <div class="mk-user-menu"><div class="mk-avatar mk-avatar-small">{{ user.username|first|upper }}</div><div><strong>{{ user.get_full_name|default:user.username }}</strong><span>{{ user.profile.get_role_display }}</span></div><span class="mk-chevron">⌄</span></div>
+      </div>
+    </header>
+
+    <main class="mk-content">
+      {% for message in messages %}<div class="mk-alert {{ message.tags }}">{{ message }}</div>{% endfor %}
+      {% block content %}{% endblock %}
+    </main>
+    <footer class="mk-footer"><span>MKDSS Compliance Management System</span><span>Internal LAN • v1.0.0</span></footer>
+  </section>
+</div>
+{% else %}{% block public_content %}{% endblock %}{% endif %}
+<script src="{% static 'js/mkdss_ui.js' %}"></script>
+</body>
+</html>

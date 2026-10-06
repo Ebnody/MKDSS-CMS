@@ -1,0 +1,72 @@
+{% extends "compliance/base.html" %}
+{% block title %}Dashboard | MKDSS Compliance Management System{% endblock %}
+{% block content %}
+<div class="mk-page-heading">
+  <div>
+    <span class="mk-eyebrow">{{ user.profile.get_role_display|upper }}</span>
+    <h1>Dashboard</h1>
+    <p>Welcome back, {{ user.get_full_name|default:user.username }}. Here's what's happening in your compliance system.</p>
+  </div>
+  <div class="mk-heading-actions">
+    <a class="mk-button" href="{% url 'notifications' %}">View notifications{% if notification_unread_count %} <b>{{ notification_unread_count }}</b>{% endif %}</a>
+  </div>
+</div>
+
+{% if user.profile.role == 'COMPLIANCE' %}
+<div class="mk-kpi-grid">
+  <div class="mk-kpi"><div class="mk-kpi-icon blue">▤</div><div><span>Total Published</span><strong>{{ published_count }}</strong><small>Controlled versions</small></div></div>
+  <div class="mk-kpi"><div class="mk-kpi-icon cyan">♙</div><div><span>Active Users</span><strong>{{ users }}</strong><small>Reading population</small></div></div>
+  <div class="mk-kpi"><div class="mk-kpi-icon green">✓</div><div><span>Completed Reading</span><strong>{{ completed }}</strong><small>{{ percent }}% completion</small></div></div>
+  <div class="mk-kpi"><div class="mk-kpi-icon amber">◷</div><div><span>Pending Reading</span><strong>{{ pending }}</strong><small>{{ in_progress }} in progress</small></div></div>
+</div>
+
+<div class="mk-dashboard-grid">
+  <section class="mk-card mk-status-card">
+    <div class="mk-card-head"><div><h2>Reading Status Overview</h2><p>Current completion across published controlled documents.</p></div><a href="{% url 'reports' %}">Open reports →</a></div>
+    <div class="mk-status-layout">
+      <div class="mk-donut" style="--completion: {{ percent }}%"><div><strong>{{ percent }}%</strong><span>Complete</span></div></div>
+      <div class="mk-status-legend">
+        <div><span class="mk-dot blue"></span><b>Completed</b><strong>{{ completed }}</strong></div>
+        <div><span class="mk-dot amber"></span><b>In Progress</b><strong>{{ in_progress }}</strong></div>
+        <div><span class="mk-dot gray"></span><b>Pending Reading</b><strong>{{ pending }}</strong></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="mk-card">
+    <div class="mk-card-head"><div><h2>Recent Activity</h2><p>Latest document reading activity.</p></div><a href="{% url 'audit_logs' %}">View all →</a></div>
+    <div class="mk-activity-list">
+      {% for row in versions|slice:":5" %}
+      <div class="mk-activity"><span class="mk-activity-icon">▤</span><div><strong>{{ row.version.document.title }}</strong><small>Version {{ row.version.version }} • {{ row.completed }} of {{ row.total }} completed</small></div><span class="mk-status-pill">{{ row.percent }}%</span></div>
+      {% empty %}
+      <div class="mk-empty">No published documents are available yet.</div>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+
+<section class="mk-card">
+  <div class="mk-card-head"><div><h2>Published Documents</h2><p>Monitor reading completion by controlled document version.</p></div><a class="mk-button primary" href="{% url 'compliance_documents' %}">Document Control</a></div>
+  <div class="mk-table-wrap"><table class="mk-table"><thead><tr><th>Document</th><th>Version</th><th>Users</th><th>Completed</th><th>In Progress</th><th>Not Started</th><th>Completion</th><th></th></tr></thead><tbody>
+  {% for row in versions %}<tr><td><strong>{{ row.version.document.title }}</strong></td><td>v{{ row.version.version }}</td><td>{{ row.total }}</td><td><span class="mk-number green">{{ row.completed }}</span></td><td><span class="mk-number amber">{{ row.in_progress }}</span></td><td>{{ row.not_started }}</td><td><div class="mk-progress"><span style="width:{{ row.percent }}%"></span></div><small>{{ row.percent }}%</small></td><td><a class="mk-link" href="{% url 'reading_drilldown' row.version.id %}">Details</a></td></tr>{% empty %}<tr><td colspan="8" class="mk-empty">No published document versions yet.</td></tr>{% endfor %}
+  </tbody></table></div>
+</section>
+
+<div class="mk-quick-grid">
+  <a class="mk-quick" href="{% url 'document_create' %}"><span class="mk-quick-icon blue">＋</span><div><strong>New Document</strong><small>Create a controlled document</small></div><b>→</b></a>
+  <a class="mk-quick" href="{% url 'upload_existing_document' %}"><span class="mk-quick-icon blue">⇧</span><div><strong>Upload Existing Document</strong><small>Register a pre-system document</small></div><b>→</b></a>
+  <a class="mk-quick" href="{% url 'compliance_queue' %}"><span class="mk-quick-icon amber">☷</span><div><strong>Request Queue</strong><small>Process submitted requests</small></div><b>→</b></a>
+  <a class="mk-quick" href="{% url 'reports' %}"><span class="mk-quick-icon green">▥</span><div><strong>Reading Reports</strong><small>Generate compliance reports</small></div><b>→</b></a>
+</div>
+
+{% elif user.profile.role == 'SYSTEM_ADMIN' %}
+<div class="mk-kpi-grid"><div class="mk-kpi"><div class="mk-kpi-icon blue">♙</div><div><span>Administration</span><strong>Ready</strong><small>System administration</small></div></div><div class="mk-kpi"><div class="mk-kpi-icon cyan">✓</div><div><span>System Health</span><strong>OK</strong><small>Services available</small></div></div></div>
+<div class="mk-card mk-empty-state"><h2>System Administration</h2><p>Manage accounts, departments, audit records, settings and backups from the administration workspace.</p><a class="mk-button primary" href="{% url 'admin_users' %}">Manage Users</a></div>
+{% elif user.profile.role == 'APPROVER' %}
+<div class="mk-kpi-grid"><div class="mk-kpi"><div class="mk-kpi-icon amber">✓</div><div><span>Approval Workspace</span><strong>Ready</strong><small>Review pending requests</small></div></div><div class="mk-kpi"><div class="mk-kpi-icon green">▤</div><div><span>Published Documents</span><strong>Read</strong><small>Controlled access</small></div></div></div>
+<div class="mk-card mk-empty-state"><h2>Approver Workspace</h2><p>Review requests, open the actual controlled document, check Compliance remarks, and record the final approval decision.</p><a class="mk-button primary" href="{% url 'approval_queue' %}">Open Approval Queue</a></div>
+{% else %}
+<div class="mk-kpi-grid"><div class="mk-kpi"><div class="mk-kpi-icon blue">▤</div><div><span>Document Center</span><strong>Ready</strong><small>Published documents</small></div></div><div class="mk-kpi"><div class="mk-kpi-icon green">♢</div><div><span>Notifications</span><strong>{{ notification_unread_count }}</strong><small>Unread updates</small></div></div></div>
+<div class="mk-card mk-empty-state"><h2>Employee Document Center</h2><p>Read published controlled documents, track your requests and submit new document or change requests.</p><div class="mk-actions"><a class="mk-button primary" href="{% url 'published_documents' %}">View Documents</a><a class="mk-button" href="{% url 'new_request' %}">New Document Request</a></div></div>
+{% endif %}
+{% endblock %}

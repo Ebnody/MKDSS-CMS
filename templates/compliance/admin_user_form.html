@@ -1,0 +1,1 @@
+{% extends "compliance/base.html" %}{% block content %}<section class="card"><h1>{% if editing %}Edit User{% else %}Create User{% endif %}</h1><form method="post">{% csrf_token %}{{form.as_p}}<button class="primary">Save User</button></form></section>{% endblock %}

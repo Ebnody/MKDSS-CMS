@@ -1,0 +1,30 @@
+{% extends "compliance/base.html" %}
+{% block content %}
+<section class="card">
+    <h1>{{ request_obj.request_number }}</h1>
+    <p><b>Type:</b> {{ request_obj.get_request_type_display }}</p>
+    <p><b>Requester:</b> {{ request_obj.requester.username }}</p>
+    <p><b>Department:</b> {{ request_obj.department }}</p>
+    <p><b>Status:</b> {{ request_obj.get_status_display }}</p>
+    <p><b>Reason:</b> {{ request_obj.reason }}</p>
+    {% if request_obj.requested_change %}<p><b>Requested change:</b> {{ request_obj.requested_change }}</p>{% endif %}
+    {% if request_obj.description %}<p><b>Description:</b> {{ request_obj.description }}</p>{% endif %}
+
+    {% if can_upload %}
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        {% if not is_change %}
+        <h2>Document Details</h2>
+        {{ meta.as_p }}
+        {% endif %}
+        <h2>Controlled File</h2>
+        {{ upload.as_p }}
+        <button class="primary">Upload Document for Compliance Review</button>
+    </form>
+    {% else %}
+    <div class="empty">
+        This request is currently {{ request_obj.get_status_display }}. No upload is allowed at this stage.
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

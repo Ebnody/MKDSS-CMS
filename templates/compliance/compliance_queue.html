@@ -1,0 +1,38 @@
+{% extends "compliance/base.html" %}
+{% block content %}
+<h1>Compliance Request Queue</h1>
+<p>Compliance can observe every request, receive uploaded documents for review, and manage the controlled-document workflow. Initial request approval is performed only by the Approver.</p>
+<table>
+<thead><tr><th>Request</th><th>Type</th><th>Requester</th><th>Status</th><th>Related Document</th><th>Action</th></tr></thead>
+<tbody>
+{% for r in requests %}
+<tr>
+    <td>{{ r.request_number }}</td>
+    <td>{{ r.get_request_type_display }}</td>
+    <td>{{ r.requester.username }}</td>
+    <td>{{ r.get_status_display }}</td>
+    <td>{% if r.related_document %}{{ r.related_document.title }}{% else %}-{% endif %}</td>
+    <td>
+        {% if r.status == 'UNDER_REVIEW' and r.related_document %}
+            <a class="button primary" href="{% url 'review_document' r.related_document.id %}">Review Document</a>
+        {% elif r.status == 'DOCUMENT_APPROVED' and r.related_document %}
+            <a class="button primary" href="{% url 'document_detail' r.related_document.id %}">Publish</a>
+        {% elif r.status == 'APPROVED' and r.requester_id == user.id %}
+            <a class="button primary" href="{% url 'process_request' r.id %}">Upload Document</a>
+        {% elif r.status == 'APPROVED' %}
+            <span>Waiting for requester upload</span>
+        {% elif r.status == 'IN_PROGRESS' and r.related_document %}
+            <a class="button" href="{% url 'document_detail' r.related_document.id %}">Open</a>
+        {% elif r.related_document %}
+            <a class="button" href="{% url 'document_detail' r.related_document.id %}">View</a>
+        {% else %}
+            <span>Observe</span>
+        {% endif %}
+    </td>
+</tr>
+{% empty %}
+<tr><td colspan="6">No requests.</td></tr>
+{% endfor %}
+</tbody>
+</table>
+{% endblock %}

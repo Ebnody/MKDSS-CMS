@@ -1,0 +1,17 @@
+{% extends "compliance/base.html" %}
+{% block title %}Notifications | MKDSS{% endblock %}
+{% block content %}
+<div class="mk-page-heading"><div><span class="mk-eyebrow">SYSTEM UPDATES</span><h1>Notifications</h1><p>Stay updated with request approvals, document reviews and publication events.</p></div><button type="button" id="mark-all-notifications" class="mk-button">Mark all as read</button></div>
+<section class="mk-card">
+  <div class="mk-notification-tabs"><span class="active">All ({{ all_notifications|length }})</span><span>Unread</span><span>Read</span></div>
+  <div class="mk-full-notifications">
+  {% for item in all_notifications %}
+    <a class="mk-full-notification {% if not item.is_read %}unread{% endif %}" data-notification-id="{{ item.pk }}" href="{{ item.url|default:'#' }}">
+      <span class="mk-full-notification-icon">{% if 'PUBLISHED' in item.kind %}↑{% elif 'REJECTED' in item.kind %}×{% elif 'APPROVED' in item.kind %}✓{% else %}!{% endif %}</span>
+      <span class="mk-full-notification-body"><strong>{{ item.title }}</strong><small>{{ item.message }}</small><em>{{ item.created_at|timesince }} ago</em></span>
+      {% if not item.is_read %}<i class="mk-unread-dot"></i><span class="mk-read-label">Mark as read</span>{% endif %}
+    </a>
+  {% empty %}<div class="mk-empty">No notifications yet.</div>{% endfor %}
+  </div>
+</section>
+{% endblock %}

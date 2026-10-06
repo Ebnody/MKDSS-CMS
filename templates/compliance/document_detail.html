@@ -1,0 +1,80 @@
+{% extends "compliance/base.html" %}
+{% block content %}
+<div class="row">
+    <h1>{{ document.title }}</h1>
+    <span class="badge">{{ document.get_state_display }}</span>
+</div>
+
+<section class="card">
+    <p><b>Document number:</b> {{ document.document_number|default:"-" }}</p>
+    <p><b>Category:</b> {{ document.category|default:"-" }}</p>
+    <p><b>Source:</b> {{ document.get_source_display }}</p>
+    <p><b>Current working version:</b> {{ document.current_version.version|default:"-" }}</p>
+    <p><b>Published version:</b> {{ document.published_version.version|default:"None" }}</p>
+
+    <div class="actions">
+        {% if document.state == 'PUBLISHED' or document.state == 'ARCHIVED' %}
+            <a class="button" href="{% url 'edit_document' document.id %}">Edit Document Information</a>
+        {% endif %}
+
+        {% if document.state == 'PENDING_APPROVAL' and document.current_version.status == 'REVIEW_ACCEPTED' %}
+            {% for a in document.current_version.approvals.all %}
+                {% if a.decision == 'APPROVED' %}
+                    <form method="post" action="{% url 'publish_document' document.id %}">
+                        {% csrf_token %}
+                        <button class="primary">Publish Approved Document</button>
+                    </form>
+                {% endif %}
+            {% endfor %}
+        {% endif %}
+
+        {% if document.state == 'PENDING_APPROVAL' %}
+            <p><b>Compliance review accepted.</b> The document is waiting for final Approver approval.</p>
+            {% if document.current_version %}
+            <p>Version {{ document.current_version.version }} is ready for final approval.</p>
+            {% endif %}
+        {% elif document.state == 'PUBLISHED' %}
+            <form method="post" action="{% url 'block_document' document.id %}">
+                {% csrf_token %}
+                <button>Block Document</button>
+            </form>
+        {% elif document.state == 'ARCHIVED' and document.published_version %}
+            <form method="post" action="{% url 'unblock_document' document.id %}">
+                {% csrf_token %}
+                <button class="primary">Unblock / Publish Document</button>
+            </form>
+        {% endif %}
+
+        <form method="post" action="{% url 'delete_document' document.id %}" onsubmit="return confirm('Delete this document and all stored versions? This cannot be undone.');">
+            {% csrf_token %}
+            <button class="danger">Delete Document</button>
+        </form>
+    </div>
+
+    {% if document.state == 'PENDING_APPROVAL' %}
+    <p class="helptext">The Approver must approve the controlled document before Compliance can publish it.</p>
+    {% endif %}
+</section>
+
+<h2>Version History</h2>
+<table>
+<thead>
+<tr><th>Version</th><th>Status</th><th>Uploaded</th><th>Uploaded By</th><th>Published</th><th>Compliance Review</th><th>Final Approval</th></tr>
+</thead>
+<tbody>
+{% for v in versions %}
+<tr>
+    <td>{{ v.version }}</td>
+    <td>{{ v.get_status_display }}</td>
+    <td>{{ v.uploaded_at }}</td>
+    <td>{{ v.uploaded_by.username }}</td>
+    <td>{{ v.publication_at|default:"-" }}</td>
+    <td>{% for r in v.reviews.all %}{{ r.get_decision_display }} — {{ r.reviewer.username }} — {{ r.remarks|default:"No remarks" }}<br>{% empty %}No review yet{% endfor %}</td>
+    <td>{% for a in v.approvals.all %}{{ a.get_decision_display }} — {{ a.approver.username }} — {{ a.remarks|default:"No remarks" }}<br>{% empty %}No final approval yet{% endfor %}</td>
+</tr>
+{% empty %}
+<tr><td colspan="7">No stored versions.</td></tr>
+{% endfor %}
+</tbody>
+</table>
+{% endblock %}

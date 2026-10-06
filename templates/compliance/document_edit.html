@@ -1,0 +1,13 @@
+{% extends "compliance/base.html" %}
+{% block content %}
+<section class="card">
+    <h1>Edit Document Information</h1>
+    <p><b>Document:</b> {{ document.title }}</p>
+    <p><b>Published version:</b> {{ document.published_version.version|default:"-" }}</p>
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button class="primary">Save Changes</button>
+    </form>
+</section>
+{% endblock %}

@@ -1,0 +1,13 @@
+{% extends "compliance/base.html" %}
+{% block content %}
+<h1>Compliance Review Queue</h1>
+<p>Compliance is the document reviewer. Accepted documents are sent to the Approver for final approval.</p>
+<table>
+<thead><tr><th>Document</th><th>Version</th><th>Uploader</th><th>Action</th></tr></thead>
+<tbody>
+{% for d in documents %}
+<tr><td>{{ d.title }}</td><td>{{ d.current_version.version }}</td><td>{{ d.current_version.uploaded_by.username }}</td><td><a class="button primary" href="{% url 'review_document' d.id %}">Review</a></td></tr>
+{% empty %}<tr><td colspan="4">No documents pending Compliance review.</td></tr>{% endfor %}
+</tbody>
+</table>
+{% endblock %}

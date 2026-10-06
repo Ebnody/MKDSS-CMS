@@ -1,0 +1,22 @@
+{% extends "compliance/base.html" %}
+{% block content %}
+<section class="card">
+    <div class="row">
+        <div>
+            <h1>Upload Existing Document</h1>
+            <p>Register a document that was created before the MKDSS Compliance Management System was introduced.</p>
+        </div>
+    </div>
+
+    <div class="helptext">
+        This upload does not create a New Document Request. The document will still pass Compliance review, Approver final approval, and Compliance publication before users can read it.
+    </div>
+
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button class="primary" type="submit">Upload for Compliance Review</button>
+        <a class="button" href="{% url 'compliance_documents' %}">Cancel</a>
+    </form>
+</section>
+{% endblock %}

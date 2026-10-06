@@ -1,0 +1,1 @@
+{% extends "compliance/base.html" %}{% block content %}<section class="card"><h1>{{title}}</h1><form method="post">{% csrf_token %}{{form.as_p}}<button class="primary">Submit Request</button></form></section>{% endblock %}

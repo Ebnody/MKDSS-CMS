@@ -1,0 +1,30 @@
+{% extends "compliance/base.html" %}
+{% block content %}
+<div class="row"><h1>User Management</h1><a class="button" href="{% url 'admin_user_new' %}">Create User</a></div>
+<p>Only System Admin can create, edit, block/unblock, or delete user accounts. Reviewer accounts are not available.</p>
+<table>
+<thead><tr><th>Username</th><th>Name</th><th>Role</th><th>Department</th><th>Active</th><th>Actions</th></tr></thead>
+<tbody>
+{% for u in users %}
+<tr>
+<td>{{ u.username }}</td>
+<td>{{ u.get_full_name|default:"-" }}</td>
+<td>{{ u.profile.get_role_display }}</td>
+<td>{{ u.profile.department|default:"-" }}</td>
+<td>{{ u.is_active }}</td>
+<td>
+<a class="button" href="{% url 'admin_user_edit' u.id %}">Edit</a>
+{% if u.id != request.user.id %}
+<form method="post" action="{% url 'admin_user_toggle' u.id %}" style="display:inline">
+{% csrf_token %}<button type="submit">{% if u.is_active %}Block{% else %}Unblock{% endif %}</button>
+</form>
+<form method="post" action="{% url 'admin_user_delete' u.id %}" style="display:inline" onsubmit="return confirm('Delete this account? Historical references may prevent deletion.');">
+{% csrf_token %}<button type="submit">Delete</button>
+</form>
+{% endif %}
+</td>
+</tr>
+{% empty %}<tr><td colspan="6">No user accounts.</td></tr>{% endfor %}
+</tbody>
+</table>
+{% endblock %}

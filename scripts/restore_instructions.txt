@@ -1,0 +1,10 @@
+SYSTEM RESTORE
+===============
+1. Stop Waitress/application service.
+2. Keep a copy of the current project directory.
+3. Use the System Admin -> Backup page or run: python manage.py backup_system
+4. Restore through System Admin -> Backup -> Restore, or place the backup ZIP in a controlled location.
+5. The restore process automatically creates a pre-restore backup.
+6. Restart Waitress after restore.
+7. Run: python manage.py check
+8. Verify login, users, documents, versions, and reading history.

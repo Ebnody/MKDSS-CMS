@@ -1,0 +1,47 @@
+{% extends "compliance/base.html" %}
+{% block content %}
+<div class="mk-page-heading">
+    <div>
+        <span class="mk-eyebrow">ADMINISTRATION</span>
+        <h1>System Health</h1>
+        <p>Live checks for the services required by the MKDSS Compliance Management System.</p>
+    </div>
+</div>
+
+<section class="mk-card">
+    <div class="mk-card-head">
+        <div>
+            <h2>Service Status</h2>
+            <p>Checks are performed when this page is opened. No configuration is changed.</p>
+        </div>
+        <span class="status-badge {% if overall_ok %}success{% else %}danger{% endif %}">
+            {% if overall_ok %}Healthy{% else %}Attention Required{% endif %}
+        </span>
+    </div>
+
+    <div class="table-wrap">
+        <table class="mk-table">
+            <thead>
+                <tr>
+                    <th>Component</th>
+                    <th>Status</th>
+                    <th>Details</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for item in checks %}
+                <tr>
+                    <td><strong>{{ item.name }}</strong></td>
+                    <td>
+                        <span class="status-badge {% if item.ok %}success{% else %}danger{% endif %}">
+                            {% if item.ok %}OK{% else %}ERROR{% endif %}
+                        </span>
+                    </td>
+                    <td>{{ item.detail }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

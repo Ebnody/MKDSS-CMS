@@ -1,0 +1,1 @@
+{% extends "compliance/base.html" %}{% block content %}<h1>Departments</h1><section class="card"><form method="post">{% csrf_token %}{{form.as_p}}<button class="primary">Save Department</button></form></section><table><tr><th>Name</th><th>Active</th></tr>{% for d in departments %}<tr><td>{{d.name}}</td><td>{{d.active}}</td></tr>{% endfor %}</table>{% endblock %}

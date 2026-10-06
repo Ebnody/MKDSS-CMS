@@ -1,0 +1,1 @@
+{% extends "compliance/base.html" %}{% block content %}<section class="card"><h1>{{heading}}</h1><form method="post" enctype="multipart/form-data">{% csrf_token %}{{meta.as_p}}{{upload.as_p}}<button class="primary">Save Draft</button></form></section>{% endblock %}

@@ -1,0 +1,19 @@
+{% extends "compliance/base.html" %}
+{% block content %}
+<div class="row"><h1>Document Control</h1><div class="actions"><a class="button" href="{% url 'new_request' %}">New Document Request</a><a class="button primary" href="{% url 'upload_existing_document' %}">Upload Existing Document</a></div></div>
+<p>New or changed documents use the approved request workflow. Existing documents created before this system can be registered directly by Compliance, then follow Compliance review, Approver approval, and publication.</p>
+<table>
+<thead><tr><th>Title</th><th>Working Version</th><th>Published Version</th><th>Source</th><th>State</th><th>Action</th></tr></thead>
+<tbody>
+{% for d in documents %}
+<tr>
+    <td>{{ d.title }}</td>
+    <td>{{ d.current_version.version|default:"-" }}</td>
+    <td>{{ d.published_version.version|default:"-" }}</td>
+    <td>{{ d.get_source_display }}</td><td>{{ d.get_state_display }}</td>
+    <td><a class="button" href="{% url 'document_detail' d.id %}">Open</a></td>
+</tr>
+{% empty %}<tr><td colspan="6">No documents.</td></tr>{% endfor %}
+</tbody>
+</table>
+{% endblock %}

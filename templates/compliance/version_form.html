@@ -1,0 +1,1 @@
+{% extends "compliance/base.html" %}{% block content %}<section class="card"><h1>{{heading}} — {{document.title}}</h1><p>Current version: {{document.current_version.version|default:"-"}}</p><form method="post" enctype="multipart/form-data">{% csrf_token %}{{form.as_p}}<button class="primary">Submit Revised Version</button></form></section>{% endblock %}

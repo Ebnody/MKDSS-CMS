@@ -1,0 +1,30 @@
+{% extends "compliance/base.html" %}
+{% load static %}
+{% block title %}Sign In | MKDSS Compliance Management System{% endblock %}
+{% block public_content %}
+<div class="mk-login-page">
+  <div class="mk-login-branding">
+    <div class="mk-login-logo"><img src="{% static 'img/mkdss-logo.png' %}" alt="MKDSS Digital Security Solution"></div>
+    <div class="mk-login-brand-title">Compliance Management System</div>
+    <p>Secure • Compliant • Trusted</p>
+    <div class="mk-login-security-list"><span>✓</span> Controlled document management</div>
+    <div class="mk-login-security-list"><span>✓</span> Approval and compliance workflow</div>
+    <div class="mk-login-security-list"><span>✓</span> Internal LAN protected access</div>
+  </div>
+  <div class="mk-login-card">
+    <div class="mk-login-heading"><span class="mk-eyebrow">SECURE INTERNAL ACCESS</span><h1>Welcome Back</h1><p>Sign in to your authorized MKDSS account.</p></div>
+    {% if form.errors %}<div class="mk-alert error">The username or password is incorrect. Please try again.</div>{% endif %}
+    <form method="post" novalidate>
+      {% csrf_token %}
+      {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+      <label for="id_username">Username</label>
+      <div class="mk-input-wrap"><span>♙</span><input id="id_username" name="username" type="text" autocomplete="username" placeholder="Enter your username" required autofocus></div>
+      <label for="id_password">Password</label>
+      <div class="mk-input-wrap"><span>⚿</span><input id="id_password" name="password" type="password" autocomplete="current-password" placeholder="Enter your password" required></div>
+      <div class="mk-login-options"><label class="mk-check"><input type="checkbox" name="remember"> <span>Remember me</span></label><span>Authorized users only</span></div>
+      <button type="submit" class="mk-login-button">Sign In <span>→</span></button>
+    </form>
+    <div class="mk-login-footer">MKDSS Compliance Management System<br><span>Version 1.0.0 • Internal LAN</span></div>
+  </div>
+</div>
+{% endblock %}

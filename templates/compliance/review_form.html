@@ -1,0 +1,34 @@
+{% extends "compliance/base.html" %}
+{% load static %}
+{% block content %}
+<section class="card">
+    <h1>Compliance Review: {{ document.title }} v{{ version.version }}</h1>
+    <p>Uploaded by {{ version.uploaded_by.username }} on {{ version.uploaded_at }}</p>
+
+    {% if preview %}
+    <div id="controlled-pdf-viewer" class="controlled-pdf-viewer" data-pdf-url="{% url 'controlled_stream_version' version.id %}">
+        <div class="pdf-toolbar">
+            <div class="pdf-navigation">
+                <button type="button" id="pdf-previous" class="pdf-control">Previous</button>
+                <span class="pdf-page-info">Page <strong id="pdf-page-number">1</strong> of <strong id="pdf-page-count">...</strong></span>
+                <button type="button" id="pdf-next" class="pdf-control">Next</button>
+            </div>
+            <div class="pdf-zoom">
+                <button type="button" id="pdf-zoom-out" class="pdf-control" title="Zoom out">−</button>
+                <button type="button" id="pdf-zoom-in" class="pdf-control" title="Zoom in">+</button>
+            </div>
+        </div>
+        <div class="pdf-canvas-container"><canvas id="controlled-pdf-canvas"></canvas></div>
+    </div>
+    {% else %}
+    <div class="empty">Preview unavailable for this file format. Contact the System Administrator.</div>
+    {% endif %}
+
+    <form method="post" class="review-form">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button class="primary">Save Compliance Review Decision</button>
+    </form>
+</section>
+{% if preview %}<script type="module" src="{% static 'js/controlled_pdf_viewer.js' %}"></script>{% endif %}
+{% endblock %}

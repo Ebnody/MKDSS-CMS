@@ -1,0 +1,38 @@
+{% extends "compliance/base.html" %}
+{% block content %}
+<div class="row">
+    <h1>{% if role == 'USER' %}My Requests{% else %}All Document Requests{% endif %}</h1>
+    {% if role == 'USER' or role == 'COMPLIANCE' %}
+    <div class="actions">
+        <a class="button" href="{% url 'new_request' %}">New Document Request</a>
+        <a class="button" href="{% url 'change_request' %}">Change Request</a>
+    </div>
+    {% endif %}
+</div>
+<table>
+<thead><tr><th>Request</th><th>Type</th><th>Requester</th><th>Status</th><th>Date</th><th>Related Document</th><th>Action</th></tr></thead>
+<tbody>
+{% for r in requests %}
+<tr>
+    <td>{{ r.request_number }}</td>
+    <td>{{ r.get_request_type_display }}</td>
+    <td>{{ r.requester.username }}</td>
+    <td>{{ r.get_status_display }}</td>
+    <td>{{ r.submitted_at }}</td>
+    <td>{{ r.related_document.title|default:"-" }}</td>
+    <td>
+        {% if r.requester_id == user.id and r.status == 'APPROVED' %}
+            <a class="button" href="{% url 'process_request' r.id %}">Upload Document</a>
+        {% elif r.requester_id == user.id and r.status == 'IN_PROGRESS' %}
+            <a class="button" href="{% url 'process_request' r.id %}">Upload / Revise</a>
+        {% elif r.related_document %}
+            {% if role == 'COMPLIANCE' %}<a class="button" href="{% url 'document_detail' r.related_document.id %}">View</a>{% else %}-{% endif %}
+        {% else %}-{% endif %}
+    </td>
+</tr>
+{% empty %}
+<tr><td colspan="7">No requests.</td></tr>
+{% endfor %}
+</tbody>
+</table>
+{% endblock %}

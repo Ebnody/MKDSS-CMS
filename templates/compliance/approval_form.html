@@ -1,0 +1,69 @@
+{% extends "compliance/base.html" %}
+{% load static %}
+{% block content %}
+<section class="card">
+{% if document_approval %}
+    <h1>Final Document Approval</h1>
+    <p><b>Document:</b> {{ version.document.title }}</p>
+    <p><b>Version:</b> {{ version.version }}</p>
+    <p><b>Uploaded by:</b> {{ version.uploaded_by.username }}</p>
+    <p><b>Uploaded at:</b> {{ version.uploaded_at }}</p>
+    <p><b>Compliance review:</b> Accepted</p>
+
+    <h2>Review the Document</h2>
+    <p>The document must be reviewed here before final approval. Use the viewer controls to inspect all pages.</p>
+    {% if preview %}
+    <div id="controlled-pdf-viewer" class="controlled-pdf-viewer" data-pdf-url="{% url 'controlled_stream_version' version.id %}">
+        <div class="pdf-toolbar">
+            <div class="pdf-navigation">
+                <button type="button" id="pdf-previous" class="pdf-control">Previous</button>
+                <span class="pdf-page-info">Page <strong id="pdf-page-number">1</strong> of <strong id="pdf-page-count">...</strong></span>
+                <button type="button" id="pdf-next" class="pdf-control">Next</button>
+            </div>
+            <div class="pdf-zoom">
+                <button type="button" id="pdf-zoom-out" class="pdf-control" title="Zoom out">−</button>
+                <button type="button" id="pdf-zoom-in" class="pdf-control" title="Zoom in">+</button>
+            </div>
+        </div>
+        <div class="pdf-canvas-container"><canvas id="controlled-pdf-canvas"></canvas></div>
+    </div>
+    {% else %}
+    <div class="empty">Document preview is unavailable. Final approval cannot proceed until the document can be reviewed.</div>
+    {% endif %}
+
+    <h2>Compliance Review</h2>
+    {% with review=version.reviews.first %}
+        {% if review %}
+        <p><b>Decision:</b> {{ review.get_decision_display }}</p>
+        <p><b>Reviewed by:</b> {{ review.reviewer.username }}</p>
+        <p><b>Remarks:</b> {{ review.remarks|default:"-" }}</p>
+        {% endif %}
+    {% endwith %}
+
+    {% if preview %}
+    <form method="post" class="review-form">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button class="primary" name="decision" value="approve">Approve Document</button>
+        <button name="decision" value="reject">Reject / Request Revision</button>
+    </form>
+    {% endif %}
+{% else %}
+    <h1>Initial Request Approval — {{ request_obj.request_number }}</h1>
+    <p><b>Type:</b> {{ request_obj.get_request_type_display }}</p>
+    <p><b>Requester:</b> {{ request_obj.requester.username }}</p>
+    <p><b>Department:</b> {{ request_obj.department }}</p>
+    {% if request_obj.existing_document %}<p><b>Existing document:</b> {{ request_obj.existing_document.title }} v{{ request_obj.existing_document.published_version.version }}</p>{% endif %}
+    <p><b>Reason:</b> {{ request_obj.reason }}</p>
+    <p><b>Description:</b> {{ request_obj.description|default:"-" }}</p>
+    <p><b>Requested change:</b> {{ request_obj.requested_change|default:"-" }}</p>
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button class="primary" name="decision" value="approve">Approve Request</button>
+        <button name="decision" value="reject">Reject Request</button>
+    </form>
+{% endif %}
+</section>
+{% if document_approval and preview %}<script type="module" src="{% static 'js/controlled_pdf_viewer.js' %}"></script>{% endif %}
+{% endblock %}
