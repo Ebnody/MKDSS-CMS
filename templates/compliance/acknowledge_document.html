@@ -1,0 +1,76 @@
+{% extends "compliance/base.html" %}
+{% block title %}Reading Acknowledgment | MKDSS CMS<style>
+.ack-confirmation{display:grid;grid-template-columns:22px minmax(0,1fr);align-items:start;gap:12px;margin:1.25rem 0;padding:1.1rem 1.15rem;border:1px solid var(--border-color,#cbd5e1);border-radius:10px;background:var(--card-bg,rgba(127,145,166,.045))}
+.ack-confirmation input[type=checkbox]{appearance:auto;-webkit-appearance:checkbox;width:18px;height:18px;margin:3px 0 0;accent-color:#1769e0;cursor:pointer}
+.ack-confirmation label{display:block;margin:0;font-weight:500;line-height:1.55;cursor:pointer}
+@media(max-width:560px){.ack-confirmation{gap:10px;padding:.9rem}.ack-confirmation label{font-size:.92rem}}
+</style>
+{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div><h1>Individual Document Reading Acknowledgment</h1><p>Record your acknowledgment for the exact published document version.</p></div>
+</div>
+<section class="card" style="max-width:820px">
+  <h2>{{ document.title }}</h2>
+  <p><strong>Document number:</strong> {{ document.document_number|default:"—" }}</p>
+  <p><strong>Published version:</strong> {{ version.version }}</p>
+  <p><strong>Department account:</strong> {{ assigned_department.name|default:"Select your department below" }}</p>
+  {% if error %}<div class="mk-alert error" role="alert">{{ error }}</div>{% endif %}
+  <form method="post" action="{% url 'acknowledge_document' version.id %}">
+    {% csrf_token %}
+    {% if account_identity %}
+      <div class="form-group" style="margin:1rem 0">
+        <label>Employee full name</label>
+        <input type="text" value="{{ values.employee_name }}" class="form-control" readonly>
+      </div>
+      <div class="form-group" style="margin:1rem 0">
+        <label>Employee ID</label>
+        <input type="text" value="{{ values.employee_id }}" class="form-control" readonly>
+      </div>
+      <div class="form-group" style="margin:1rem 0">
+        <label>Department</label>
+        <input type="text" value="{{ assigned_department.name|default:'Not assigned' }}" class="form-control" readonly>
+      </div>
+      <p><small>Your identity is taken directly from your authenticated CMS account and cannot be changed on this page.</small></p>
+    {% else %}
+      <div class="form-group" style="margin:1rem 0">
+        <label for="employee_name">Employee full name <span aria-hidden="true">*</span></label>
+        <input id="employee_name" name="employee_name" type="text" maxlength="180" autocomplete="name" required value="{{ values.employee_name }}" class="form-control" placeholder="Enter your full name">
+      </div>
+      <div class="form-group" style="margin:1rem 0">
+        <label for="employee_id">Employee ID <span aria-hidden="true">*</span></label>
+        <input id="employee_id" name="employee_id" type="text" maxlength="80" required value="{{ values.employee_id }}" class="form-control" placeholder="Enter your employee ID" autocapitalize="characters">
+        <small>The system prevents this employee ID from acknowledging the same document version twice.</small>
+      </div>
+      <div class="form-group" style="margin:1rem 0">
+        <label for="department">Department <span aria-hidden="true">*</span></label>
+        {% if assigned_department %}
+          <input type="text" value="{{ assigned_department.name }}" class="form-control" readonly>
+          <input type="hidden" name="department" value="{{ assigned_department.pk }}">
+          <small>Department is taken from the shared account and cannot be changed here.</small>
+        {% else %}
+          <select id="department" name="department" required class="form-control">
+            <option value="">Select department</option>
+            {% for dept in departments %}<option value="{{ dept.pk }}" {% if values.department_id == dept.pk|stringformat:'s' %}selected{% endif %}>{{ dept.name }}</option>{% endfor %}
+          </select>
+        {% endif %}
+      </div>
+    {% endif %}
+    <div class="ack-confirmation">
+      <input id="confirmation" type="checkbox" name="confirmation" value="yes" required>
+      <label for="confirmation">I confirm that I have read the identified compliance document and understand that this acknowledgment is recorded by MKDSS for compliance monitoring and audit purposes.</label>
+    </div>
+    {% if not account_identity %}<p><small>Submission is recorded under the shared Reader CMS account. Individual identity is self-declared for this shared login.</small></p>{% endif %}
+    <div style="display:flex;gap:.75rem;flex-wrap:wrap;margin-top:1rem">
+      <button type="submit" class="primary">Submit Acknowledgment</button>
+      <a class="button" href="{% url 'read_document' document.id %}">Return to Document</a>
+    </div>
+  </form>
+</section>
+<style>
+.ack-confirmation{display:grid;grid-template-columns:22px minmax(0,1fr);align-items:start;gap:12px;margin:1.25rem 0;padding:1.1rem 1.15rem;border:1px solid var(--border-color,#cbd5e1);border-radius:10px;background:var(--card-bg,rgba(127,145,166,.045))}
+.ack-confirmation input[type=checkbox]{appearance:auto;-webkit-appearance:checkbox;width:18px;height:18px;margin:3px 0 0;accent-color:#1769e0;cursor:pointer}
+.ack-confirmation label{display:block;margin:0;font-weight:500;line-height:1.55;cursor:pointer}
+@media(max-width:560px){.ack-confirmation{gap:10px;padding:.9rem}.ack-confirmation label{font-size:.92rem}}
+</style>
+{% endblock %}

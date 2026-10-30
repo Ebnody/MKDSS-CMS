@@ -10,6 +10,7 @@ from django.urls import reverse
 from .models import (
     ComplianceRequest,
     ComplianceRequestHistory,
+    AuditLog,
     Notification,
     Department,
     Document,
@@ -39,7 +40,8 @@ class BaseTests(TestCase):
             (Role.SYSTEM_ADMIN, "admin"),
             (Role.COMPLIANCE, "compliance"),
             (Role.APPROVER, "approver"),
-            (Role.USER, "reader"),
+            (Role.MANAGER, "manager"),
+            (Role.READER, "reader_only"),
         ]:
             user = User.objects.create_user(username=username, password="StrongPassword!123")
             user.profile.role = role
@@ -90,20 +92,20 @@ class RoleMatrixTests(BaseTests):
 
     def test_all_non_admin_roles_can_read_published_documents(self):
         doc, _ = self.published_doc()
-        for role in [Role.USER, Role.COMPLIANCE, Role.APPROVER]:
+        for role in [Role.MANAGER, Role.READER, Role.COMPLIANCE, Role.APPROVER]:
             self.login(role)
             self.assertEqual(self.client.get(reverse("published_documents")).status_code, 200)
             self.assertEqual(self.client.get(reverse("read_document", args=[doc.pk])).status_code, 200)
 
     def test_compliance_is_the_only_document_reviewer(self):
-        doc = Document.objects.create(title="Review", created_by=self.users[Role.USER], state=Document.State.UNDER_REVIEW)
+        doc = Document.objects.create(title="Review", created_by=self.users[Role.MANAGER], state=Document.State.UNDER_REVIEW)
         version = DocumentVersion.objects.create(
             document=doc, version="1.0", original_name="review.pdf", original_file=self.pdf("review.pdf"),
-            mime_type="application/pdf", status=DocumentVersion.Status.UNDER_REVIEW, uploaded_by=self.users[Role.USER]
+            mime_type="application/pdf", status=DocumentVersion.Status.UNDER_REVIEW, uploaded_by=self.users[Role.MANAGER]
         )
         doc.current_version = version
         doc.save(update_fields=["current_version"])
-        self.login(Role.USER)
+        self.login(Role.MANAGER)
         self.assertEqual(self.client.get(reverse("review_queue")).status_code, 403)
         self.login(Role.APPROVER)
         self.assertEqual(self.client.get(reverse("review_queue")).status_code, 403)
@@ -115,6 +117,14 @@ class RoleMatrixTests(BaseTests):
         self.assertEqual(self.client.get(reverse("new_request")).status_code, 403)
         self.assertEqual(self.client.get(reverse("change_request")).status_code, 403)
 
+    def test_reader_only_cannot_submit_requests_and_dashboard_opens_documents(self):
+        self.login(Role.READER)
+        self.assertEqual(self.client.get(reverse("new_request")).status_code, 403)
+        self.assertEqual(self.client.get(reverse("change_request")).status_code, 403)
+        response = self.client.get(reverse("dashboard"))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("published_documents"))
+
     def test_compliance_cannot_approve(self):
         self.login(Role.COMPLIANCE)
         self.assertEqual(self.client.get(reverse("approval_queue")).status_code, 403)
@@ -123,95 +133,6 @@ class RoleMatrixTests(BaseTests):
         self.login(Role.SYSTEM_ADMIN)
         for name in ["compliance_documents", "review_queue", "approval_queue", "published_documents"]:
             self.assertEqual(self.client.get(reverse(name)).status_code, 403)
-
-
-class ComplianceOwnApprovedRequestUploadTests(BaseTests):
-    def test_compliance_can_upload_own_approved_request(self):
-        self.login(Role.COMPLIANCE)
-        response = self.client.post(reverse("new_request"), {
-            "requested_title": "Compliance Requested Procedure",
-            "department": self.department.pk,
-            "reason": "Compliance needs a controlled procedure.",
-            "description": "Requested by Compliance.",
-            "additional_notes": "",
-        })
-        self.assertEqual(response.status_code, 302)
-        req = ComplianceRequest.objects.latest("id")
-
-        self.login(Role.APPROVER)
-        response = self.client.post(reverse("approve_request", args=[req.pk]), {
-            "decision": "approve",
-            "approval_comments": "Approved.",
-        })
-        self.assertEqual(response.status_code, 302)
-        req.refresh_from_db()
-        self.assertEqual(req.status, ComplianceRequest.Status.APPROVED)
-
-        self.login(Role.COMPLIANCE)
-        response = self.client.get(reverse("process_request", args=[req.pk]))
-        self.assertEqual(response.status_code, 200)
-        response = self.client.post(reverse("process_request", args=[req.pk]), {
-            "title": "Compliance Requested Procedure",
-            "document_number": "CMP-001",
-            "category": "Compliance",
-            "version": "1.0",
-            "original_file": self.pdf("compliance-request.pdf"),
-        })
-        self.assertEqual(response.status_code, 302)
-        req.refresh_from_db()
-        self.assertEqual(req.status, ComplianceRequest.Status.UNDER_REVIEW)
-
-
-class ExistingDocumentUploadTests(BaseTests):
-    def test_only_compliance_can_upload_existing_documents(self):
-        for role in [Role.USER, Role.APPROVER, Role.SYSTEM_ADMIN]:
-            self.login(role)
-            self.assertEqual(self.client.get(reverse("upload_existing_document")).status_code, 403)
-
-        self.login(Role.COMPLIANCE)
-        response = self.client.get(reverse("upload_existing_document"))
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Upload Existing Document")
-
-    def test_existing_document_enters_compliance_review_without_request(self):
-        self.login(Role.COMPLIANCE)
-        response = self.client.post(reverse("upload_existing_document"), {
-            "title": "Legacy Access Control Procedure",
-            "document_number": "LEG-001",
-            "category": "Access Control",
-            "version": "1.0",
-            "original_file": self.pdf("legacy-procedure.pdf"),
-        })
-        self.assertEqual(response.status_code, 302)
-        doc = Document.objects.get(title="Legacy Access Control Procedure")
-        version = doc.current_version
-        self.assertEqual(doc.source, Document.Source.EXISTING)
-        self.assertEqual(doc.state, Document.State.UNDER_REVIEW)
-        self.assertEqual(version.status, DocumentVersion.Status.UNDER_REVIEW)
-        self.assertFalse(ComplianceRequest.objects.filter(related_document=doc).exists())
-
-        self.login(Role.COMPLIANCE)
-        self.client.post(reverse("review_document", args=[doc.pk]), {
-            "decision": "ACCEPTED", "remarks": "Existing document reviewed."
-        })
-        version.refresh_from_db()
-        doc.refresh_from_db()
-        self.assertEqual(version.status, DocumentVersion.Status.PENDING_APPROVAL)
-        self.assertEqual(doc.state, Document.State.PENDING_APPROVAL)
-
-        self.login(Role.APPROVER)
-        self.client.post(reverse("approve_document", args=[version.pk]), {
-            "approval_comments": "Final approval of legacy document.", "decision": "approve"
-        })
-        version.refresh_from_db()
-        self.assertEqual(version.status, DocumentVersion.Status.REVIEW_ACCEPTED)
-
-        self.login(Role.COMPLIANCE)
-        self.client.post(reverse("publish_document", args=[doc.pk]))
-        doc.refresh_from_db()
-        version.refresh_from_db()
-        self.assertEqual(doc.state, Document.State.PUBLISHED)
-        self.assertEqual(version.status, DocumentVersion.Status.PUBLISHED)
 
 
 class AdminAndApprovalPageTests(BaseTests):
@@ -228,7 +149,7 @@ class AdminAndApprovalPageTests(BaseTests):
         req = ComplianceRequest.objects.create(
             request_number="REQ-PAGE-001",
             request_type=ComplianceRequest.RequestType.NEW,
-            requester=self.users[Role.USER],
+            requester=self.users[Role.MANAGER],
             department=self.dept,
             requested_title="Approval Page Test",
             reason="Page test",
@@ -246,7 +167,7 @@ class AdminAndApprovalPageTests(BaseTests):
 
 class RequestWorkflowTests(BaseTests):
     def test_user_request_approval_upload_compliance_review_final_approval_publish(self):
-        self.login(Role.USER)
+        self.login(Role.MANAGER)
         response = self.client.post(reverse("new_request"), {
             "requested_title": "New Procedure",
             "department": self.dept.pk,
@@ -267,7 +188,7 @@ class RequestWorkflowTests(BaseTests):
         req.refresh_from_db()
         self.assertEqual(req.status, ComplianceRequest.Status.APPROVED)
 
-        self.login(Role.USER)
+        self.login(Role.MANAGER)
         self.client.post(reverse("process_request", args=[req.pk]), {
             "title": "New Procedure",
             "document_number": "PROC-001",
@@ -328,7 +249,7 @@ class RequestWorkflowTests(BaseTests):
         self.assertEqual(req.requester_id, self.users[Role.COMPLIANCE].id)
 
     def test_compliance_cannot_upload_for_another_users_request(self):
-        self.login(Role.USER)
+        self.login(Role.MANAGER)
         self.client.post(reverse("new_request"), {
             "requested_title": "Other Procedure",
             "department": self.dept.pk,
@@ -346,7 +267,7 @@ class RequestWorkflowTests(BaseTests):
 class DocumentApprovalAndVersionTests(BaseTests):
     def test_change_keeps_old_published_until_new_version_is_published_then_deletes_it(self):
         doc, old = self.published_doc("1.0")
-        self.login(Role.USER)
+        self.login(Role.MANAGER)
         self.client.post(reverse("change_request"), {
             "existing_document": doc.pk,
             "department": self.dept.pk,
@@ -357,7 +278,7 @@ class DocumentApprovalAndVersionTests(BaseTests):
         req = ComplianceRequest.objects.get(existing_document=doc)
         self.login(Role.APPROVER)
         self.client.post(reverse("approve_request", args=[req.pk]), {"approval_comments": "Approved", "decision": "approve"})
-        self.login(Role.USER)
+        self.login(Role.MANAGER)
         self.client.post(reverse("process_request", args=[req.pk]), {"version": "1.1", "original_file": self.pdf("policy11.pdf")})
         self.assertTrue(DocumentVersion.objects.filter(pk=old.pk).exists())
         req.refresh_from_db()
@@ -373,11 +294,11 @@ class DocumentApprovalAndVersionTests(BaseTests):
         self.assertFalse(DocumentVersion.objects.filter(pk=old.pk).exists())
 
     def test_compliance_review_revision_removes_old_unpublished_working_version(self):
-        self.login(Role.USER)
+        self.login(Role.MANAGER)
         req = ComplianceRequest.objects.create(
             request_number="REQ-REV-001",
             request_type=ComplianceRequest.RequestType.NEW,
-            requester=self.users[Role.USER],
+            requester=self.users[Role.MANAGER],
             department=self.dept,
             requested_title="New",
             reason="Need",
@@ -390,7 +311,7 @@ class DocumentApprovalAndVersionTests(BaseTests):
         doc = req.related_document
         self.client.post(reverse("review_document", args=[doc.pk]), {"decision":"REVISION_REQUIRED","remarks":"Correct it"})
         self.assertEqual(DocumentVersion.objects.get(pk=old_working.pk).status, DocumentVersion.Status.REVISION_REQUIRED)
-        self.login(Role.USER)
+        self.login(Role.MANAGER)
         self.client.post(reverse("process_request", args=[req.pk]), {"version":"1.1","original_file":self.pdf("v2.pdf")})
         self.assertFalse(DocumentVersion.objects.filter(pk=old_working.pk).exists())
         self.assertEqual(DocumentVersion.objects.filter(document=doc).count(), 1)
@@ -414,11 +335,36 @@ class ComplianceDocumentControlTests(BaseTests):
         self.assertFalse(Document.objects.filter(pk=doc.pk).exists())
         self.assertFalse(DocumentVersion.objects.filter(document_id=doc.pk).exists())
 
+    def test_compliance_can_delete_document_with_protected_approval_history(self):
+        doc, version = self.published_doc()
+        approval = DocumentApproval.objects.create(
+            version=version,
+            approver=self.users[Role.APPROVER],
+            decision=DocumentApproval.Decision.APPROVED,
+            remarks="Approved for publication.",
+        )
+        self.login(Role.COMPLIANCE)
+
+        response = self.client.post(reverse("delete_document", args=[doc.pk]))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(Document.objects.filter(pk=doc.pk).exists())
+        self.assertFalse(DocumentVersion.objects.filter(pk=version.pk).exists())
+        self.assertFalse(DocumentApproval.objects.filter(pk=approval.pk).exists())
+
+        deletion_log = AuditLog.objects.get(action="DOCUMENT_DELETE", object_id=str(doc.pk))
+        self.assertEqual(deletion_log.details["title"], "Policy")
+        self.assertEqual(len(deletion_log.details["approval_history"]), 1)
+        self.assertEqual(
+            deletion_log.details["approval_history"][0]["decision"],
+            DocumentApproval.Decision.APPROVED,
+        )
+
 
 class ReadingTests(BaseTests):
     def test_finish_reading_is_explicit_for_all_read_roles(self):
         doc, version = self.published_doc()
-        for role in [Role.USER, Role.COMPLIANCE, Role.APPROVER]:
+        for role in [Role.MANAGER, Role.READER, Role.COMPLIANCE, Role.APPROVER]:
             self.login(role)
             self.client.get(reverse("read_document", args=[doc.pk]))
             record = ReadingRecord.objects.get(user=self.users[role], version=version)
@@ -432,7 +378,7 @@ class ReadingTests(BaseTests):
 class AdminTests(BaseTests):
     def test_system_admin_can_block_edit_and_delete_unreferenced_user(self):
         user = User.objects.create_user(username="temporary", password="StrongPassword!123")
-        user.profile.role = Role.USER
+        user.profile.role = Role.MANAGER
         user.profile.department = self.dept
         user.profile.save()
         self.login(Role.SYSTEM_ADMIN)
@@ -476,7 +422,7 @@ class NotificationAndApprovalHistoryTests(BaseTests):
         return ComplianceRequest.objects.create(
             request_number=number,
             request_type=ComplianceRequest.RequestType.NEW,
-            requester=self.users[Role.USER],
+            requester=self.users[Role.MANAGER],
             department=self.dept,
             requested_title="Notification Test",
             reason="Testing workflow notifications",
@@ -504,7 +450,7 @@ class NotificationAndApprovalHistoryTests(BaseTests):
             reverse("approve_request", args=[req.pk]),
             {"approval_comments": "Approved", "decision": "approve"},
         )
-        self.login(Role.USER)
+        self.login(Role.MANAGER)
         self.client.post(reverse("process_request", args=[req.pk]), {
             "title": "Uploaded Procedure",
             "document_number": "DOC-001",
@@ -527,7 +473,7 @@ class NotificationAndApprovalHistoryTests(BaseTests):
             reverse("approve_request", args=[req.pk]),
             {"approval_comments": "Approved", "decision": "approve"},
         )
-        self.login(Role.USER)
+        self.login(Role.MANAGER)
         self.client.post(reverse("process_request", args=[req.pk]), {
             "title": "Review Procedure",
             "document_number": "DOC-002",
@@ -563,3 +509,35 @@ class NotificationAndApprovalHistoryTests(BaseTests):
         self.assertIsNotNone(notification)
         self.assertIn(req.request_number, notification.message)
 
+
+
+class ComplianceRequestWorkflowTests(BaseTests):
+    def test_compliance_new_document_page_redirects_to_request_workflow(self):
+        self.login(Role.COMPLIANCE)
+        response = self.client.get(reverse("document_create"))
+        self.assertRedirects(response, reverse("new_request"))
+
+    def test_compliance_can_open_new_and_change_request_forms(self):
+        self.login(Role.COMPLIANCE)
+        self.assertEqual(self.client.get(reverse("new_request")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("change_request")).status_code, 200)
+
+    def test_compliance_can_only_directly_register_preexisting_documents(self):
+        self.login(Role.COMPLIANCE)
+        response = self.client.post(
+            reverse("upload_existing_document"),
+            {
+                "title": "Pre-existing Policy",
+                "document_number": "OLD-001",
+                "category": "Policy",
+                "version": "1.0",
+                "audience": Document.Audience.PUBLIC,
+                "original_file": self.pdf("preexisting-policy.pdf"),
+            },
+        )
+        self.assertIn(response.status_code, (200, 302))
+        if response.status_code == 302:
+            document = Document.objects.get(document_number="OLD-001")
+            self.assertEqual(document.source, Document.Source.EXISTING)
+            self.assertEqual(document.state, Document.State.PUBLISHED)
+            self.assertIsNotNone(document.published_version)

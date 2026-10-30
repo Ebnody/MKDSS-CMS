@@ -12,7 +12,7 @@ class RoleAndApproverFixTests(TestCase):
         self.admin = self.make_user("admin", Role.SYSTEM_ADMIN)
         self.compliance = self.make_user("compliance", Role.COMPLIANCE)
         self.approver = self.make_user("approver", Role.APPROVER)
-        self.user = self.make_user("user", Role.USER)
+        self.user = self.make_user("user", Role.MANAGER)
 
     def make_user(self, username, role):
         user = User.objects.create_user(username=username, password="StrongPassword!123")
@@ -44,7 +44,7 @@ class RoleAndApproverFixTests(TestCase):
             type("Apps", (), {"get_model": staticmethod(lambda app, model: UserProfile)})(),
             None,
         )
-        self.assertEqual(UserProfile.objects.get(user=user).role, Role.USER)
+        self.assertEqual(UserProfile.objects.get(user=user).role, Role.MANAGER)
 
     def test_approver_can_open_published_document(self):
         document = Document.objects.create(title="Policy", created_by=self.compliance, state=Document.State.PUBLISHED)

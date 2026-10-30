@@ -100,37 +100,26 @@
 
 {% if record %}
 <section class="card">
-
-    <p>
-        Started:
-        {{ record.started_at|default:"Not recorded" }}
-    </p>
-
-    {% if record.status != 'COMPLETED' %}
-
-        <form
-            method="post"
-            action="{% url 'finish_reading' version.id %}"
-        >
-            {% csrf_token %}
-
-            <button class="primary">
-                Finished Reading
-            </button>
-        </form>
-
-    {% else %}
-
-        <strong>
-            Reading completed and recorded.
-        </strong>
-
-        <p>
-            Completed: {{ record.completed_at }}
-        </p>
-
+    <p>Started: {{ record.started_at|default:"Not recorded" }}</p>
+    {% if record.status == 'COMPLETED' %}
+        {% if request.user.profile.role == 'READER' %}
+            <p><strong>Department account reading status: Completed.</strong></p>
+            <p>Individual acknowledgment is still required for each employee in this department.</p>
+            <p><small>Completing the shared Reader account does not mean every department member has acknowledged the document.</small></p>
+            <p>Department account completed: {{ record.completed_at }}</p>
+        {% else %}
+            <p><strong>You have completed reading this document.</strong></p>
+            <p>Completed: {{ record.completed_at }}</p>
+        {% endif %}
     {% endif %}
-
+    <form method="post" action="{% url 'finish_reading' version.id %}">
+        {% csrf_token %}
+        {% if request.user.profile.role == 'READER' %}
+            <button class="primary">Finish Reading &amp; Submit Individual Acknowledgment</button>
+        {% else %}
+            <button class="primary">Finish Reading</button>
+        {% endif %}
+    </form>
 </section>
 {% endif %}
 

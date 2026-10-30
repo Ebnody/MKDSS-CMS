@@ -1,1 +1,54 @@
-{% extends "compliance/base.html" %}{% block content %}<div class="row"><h1>Published Documents</h1><form><input name="q" value="{{q}}" placeholder="Search title, number, category"><button>Search</button></form></div><table><tr><th>Title</th><th>Number</th><th>Version</th><th>Category</th><th>Published Date</th><th>Action</th></tr>{% for d in documents %}<tr><td>{{d.title}}</td><td>{{d.document_number|default:"-"}}</td><td>{{d.published_version.version}}</td><td>{{d.category|default:"-"}}</td><td>{{ d.published_version.publication_at|date:"Y-m-d H:i"|default:"-" }}</td><td><a class="button" href="{% url 'read_document' d.id %}">Open / Read</a></td></tr>{% empty %}<tr><td colspan="6">No documents found.</td></tr>{% endfor %}</table>{% endblock %}
+{% extends "compliance/base.html" %}
+{% block content %}
+<section class="page-header">
+  <div>
+    <h1>Published Documents</h1>
+    <p>Reading status is shown here for each published version. You do not need to open a document to check whether your account has completed it.</p>
+  </div>
+  <form method="get" class="search-form">
+    <input name="q" value="{{ q }}" placeholder="Search title, number, category" aria-label="Search published documents">
+    <button type="submit" class="button">Search</button>
+  </form>
+</section>
+<div class="table-responsive">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Document</th>
+        <th>Number</th>
+        <th>Version</th>
+        <th>Category</th>
+        <th>Published</th>
+        <th>Reading status</th>
+        <th>Employee acknowledgments</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in documents %}
+      <tr>
+        <td><strong>{{ d.title }}</strong></td>
+        <td>{{ d.document_number|default:"-" }}</td>
+        <td>{{ d.published_version.version }}</td>
+        <td>{{ d.category|default:"-" }}</td>
+        <td>{{ d.published_version.publication_at|date:"Y-m-d H:i"|default:"-" }}</td>
+        <td>
+          {% if d.my_read_status == "COMPLETED" %}
+            <span class="status-badge status-success" title="Completed{% if d.my_read_completed_at %} on {{ d.my_read_completed_at|date:'Y-m-d H:i' }}{% endif %}">✓ Completed</span>
+            {% if d.my_read_completed_at %}<small class="status-date">{{ d.my_read_completed_at|date:"Y-m-d H:i" }}</small>{% endif %}
+          {% elif d.my_read_status == "IN_PROGRESS" %}
+            <span class="status-badge status-warning">In progress</span>
+          {% else %}
+            <span class="status-badge status-muted">Not completed</span>
+          {% endif %}
+        </td>
+        <td>{{ d.employee_acknowledgment_count|default:0 }}</td>
+        <td><a class="button button-secondary" href="{% url 'read_document' d.id %}">{% if d.my_read_status == "COMPLETED" %}View document{% else %}Open / Read{% endif %}</a></td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="8" class="empty-state">No published documents found.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

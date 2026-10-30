@@ -51,12 +51,21 @@
 {% else %}
     <h1>Initial Request Approval — {{ request_obj.request_number }}</h1>
     <p><b>Type:</b> {{ request_obj.get_request_type_display }}</p>
-    <p><b>Requester:</b> {{ request_obj.requester.username }}</p>
+    <p><b>Requester:</b> {{ request_obj.requester.get_full_name|default:request_obj.requester.username }}</p>
     <p><b>Department:</b> {{ request_obj.department }}</p>
-    {% if request_obj.existing_document %}<p><b>Existing document:</b> {{ request_obj.existing_document.title }} v{{ request_obj.existing_document.published_version.version }}</p>{% endif %}
-    <p><b>Reason:</b> {{ request_obj.reason }}</p>
-    <p><b>Description:</b> {{ request_obj.description|default:"-" }}</p>
-    <p><b>Requested change:</b> {{ request_obj.requested_change|default:"-" }}</p>
+    {% if request_obj.request_type == "NEW_DOCUMENT" %}
+      <p><b>Request type:</b> {% if request_obj.requested_change == "ADOPTION" %}Adoption of External Document{% else %}New Document{% endif %}</p>
+      <p><b>Affected Process(es):</b> {{ request_obj.description }}</p>
+      <p><b>Process Owner:</b> {{ request_obj.requested_title }}</p>
+      <p><b>Justification for the request:</b> {{ request_obj.reason }}</p>
+      <p><b>Enclosure (Title and No. of pages):</b> {{ request_obj.additional_notes }}</p>
+      <p><b>Requester signature:</b> Authenticated CMS account confirmation</p>
+    {% else %}
+      {% if request_obj.existing_document %}<p><b>Existing document:</b> {{ request_obj.existing_document.title }} v{{ request_obj.existing_document.published_version.version }}</p>{% endif %}
+      <p><b>Reason:</b> {{ request_obj.reason }}</p>
+      <p><b>Description:</b> {{ request_obj.description|default:"-" }}</p>
+      <p><b>Requested change:</b> {{ request_obj.requested_change|default:"-" }}</p>
+    {% endif %}
     <form method="post">
         {% csrf_token %}
         {{ form.as_p }}

@@ -1,7 +1,7 @@
 {% extends "compliance/base.html" %}
 {% block content %}
 <div class="row"><h1>Document Control</h1><div class="actions"><a class="button" href="{% url 'new_request' %}">New Document Request</a><a class="button primary" href="{% url 'upload_existing_document' %}">Upload Existing Document</a></div></div>
-<p>New or changed documents use the approved request workflow. Existing documents created before this system can be registered directly by Compliance, then follow Compliance review, Approver approval, and publication.</p>
+<p>New or changed documents use the approved request workflow. Managers submit new controlled documents for Compliance review and Approver approval. Compliance can register pre-existing documents directly and publish them with an assigned audience. Existing documents remain hidden from readers until Compliance classifies them.</p>
 <table>
 <thead><tr><th>Title</th><th>Working Version</th><th>Published Version</th><th>Source</th><th>State</th><th>Action</th></tr></thead>
 <tbody>

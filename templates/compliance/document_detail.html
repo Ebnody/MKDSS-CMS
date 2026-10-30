@@ -9,6 +9,40 @@
     <p><b>Document number:</b> {{ document.document_number|default:"-" }}</p>
     <p><b>Category:</b> {{ document.category|default:"-" }}</p>
     <p><b>Source:</b> {{ document.get_source_display }}</p>
+    <p><b>Reading audience:</b> {{ document.get_audience_display }}</p>
+    <p><b>Permitted department:</b> {{ document.audience_department|default:"—" }}</p>
+    {% if user.profile.role == 'COMPLIANCE' %}
+    <details class="card mk-audience-editor" open>
+      <summary class="mk-audience-summary"><span class="mk-audience-summary-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 4 6v5c0 5 3.5 8.5 8 10 4.5-1.5 8-5 8-10V6z"/><path d="m8.5 12 2.3 2.3 4.7-4.8"/></svg></span><span><strong>Document access settings</strong><small>Choose who can read this controlled document.</small></span></summary>
+      <form class="mk-audience-form" data-audience-form method="post" action="{% url 'set_document_audience' document.id %}">{% csrf_token %}
+        <div class="mk-form-field mk-audience-field">
+          <label for="audience">Reading audience</label>
+          <select name="audience" id="audience" data-audience-select required>
+            {% for value,label in audience_choices %}<option value="{{ value }}" {% if document.audience == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select>
+          <small>Choose an audience to enable only the relevant department selector.</small>
+        </div>
+        <div class="mk-form-field mk-audience-field" data-audience-field="department">
+          <label for="audience_department">Department (for department-only documents)</label>
+          <select name="audience_department" id="audience_department" data-audience-department {% if document.audience != 'DEPARTMENT' %}disabled{% endif %}>
+            <option value="">Select a department</option>{% for dept in departments %}<option value="{{ dept.pk }}" {% if document.audience_department_id == dept.pk %}selected{% endif %}>{{ dept.name }}</option>{% endfor %}
+          </select>
+          <small>Enabled only when the audience is “Specific Department”.</small>
+        </div>
+        <div class="mk-form-field mk-audience-field" data-audience-field="selected">
+          <label>Departments whose managers may read this document</label>
+          <details class="mk-department-dropdown" data-department-dropdown {% if document.audience != 'SELECTED_MANAGERS' %}aria-disabled="true"{% endif %}>
+            <summary><span data-department-summary>{% if document.audience_departments.count %}{{ document.audience_departments.count }} department(s) selected{% else %}Choose departments{% endif %}</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
+            <div class="mk-department-menu" role="group" aria-label="Departments allowed to read this document">
+              {% for dept in departments %}<label class="mk-department-option"><input type="checkbox" name="audience_departments" value="{{ dept.pk }}" data-department-option {% if dept in document.audience_departments.all %}checked{% endif %} {% if document.audience != 'SELECTED_MANAGERS' %}disabled{% endif %}><span>{{ dept.name }}</span></label>{% empty %}<p class="mk-empty">No active departments are available.</p>{% endfor %}
+            </div>
+          </details>
+          <small>Enabled only for “Selected Departments (Managers)”. Open the dropdown and select one or more departments.</small>
+        </div>
+        <div class="mk-audience-actions"><button class="primary" type="submit">Save access settings</button></div>
+      </form>
+    </details>
+    {% endif %}
     <p><b>Current working version:</b> {{ document.current_version.version|default:"-" }}</p>
     <p><b>Published version:</b> {{ document.published_version.version|default:"None" }}</p>
 

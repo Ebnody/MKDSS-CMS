@@ -141,6 +141,29 @@ def notify_document_uploaded(req, version, _legacy_url=None):
     )
 
 
+def notify_document_uploaded_for_approval(req, version):
+    """Notify Approvers when Compliance uploads a document they have already reviewed."""
+    approvers = User.objects.filter(
+        is_active=True,
+        profile__active=True,
+        profile__role=Role.APPROVER,
+    )
+    notify_users(
+        approvers,
+        "DOCUMENT_PENDING_FINAL_APPROVAL",
+        "Document Requires Final Approval",
+        f"{version.document.title} v{version.version} was uploaded by Compliance for request {req.request_number} and is waiting for your final approval.",
+        reverse("approve_document", args=[version.pk]),
+    )
+    notify_user(
+        req.requester,
+        "DOCUMENT_UPLOAD_RECEIVED",
+        "Document Submitted for Final Approval",
+        f"Your document for request {req.request_number} was uploaded by Compliance and sent directly for final approval.",
+        reverse("requests"),
+    )
+
+
 def notify_document_review_result(req, version, accepted, _legacy_url=None):
     """Notify the next responsible party after Compliance reviews a document."""
     if accepted:

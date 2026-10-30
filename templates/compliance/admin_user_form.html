@@ -1,1 +1,87 @@
-{% extends "compliance/base.html" %}{% block content %}<section class="card"><h1>{% if editing %}Edit User{% else %}Create User{% endif %}</h1><form method="post">{% csrf_token %}{{form.as_p}}<button class="primary">Save User</button></form></section>{% endblock %}
+{% extends "compliance/base.html" %}
+{% block title %}{% if editing %}Edit Account{% else %}Create Account{% endif %} | MKDSS CMS{% endblock %}
+{% block content %}
+<section class="card" style="max-width:900px;margin:0 auto">
+  <div class="page-header">
+    <div>
+      <h1>{% if editing %}Edit Account{% else %}Create Account{% endif %}</h1>
+      <p>Choose the account type first. Reader accounts are shared by members of one department.</p>
+    </div>
+  </div>
+  <form method="post" class="mk-form" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="mk-alert error">{{ form.non_field_errors }}</div>{% endif %}
+    <div class="form-group" style="margin:1rem 0">
+      <label for="id_role">{{ form.role.label }}</label>
+      {{ form.role }}{{ form.role.errors }}
+      <small>Select Reader to create a shared department account.</small>
+    </div>
+    <div class="form-group" id="department-field" style="margin:1rem 0">
+      <label for="id_department">{{ form.department.label }}</label>
+      {{ form.department }}{{ form.department.errors }}
+      <small id="department-help">{{ form.department.help_text }}</small>
+    </div>
+    <div class="form-group" id="employee-id-field" style="margin:1rem 0">
+      <label for="id_employee_id">{{ form.employee_id.label }}</label>{{ form.employee_id }}{{ form.employee_id.errors }}
+      <small>Enter the official employee ID. It is used to identify individual users in document reading acknowledgments.</small>
+    </div>
+    <div class="form-group" id="username-field" style="margin:1rem 0">
+      <label for="id_username" id="username-label">{{ form.username.label }}</label>
+      {{ form.username }}{{ form.username.errors }}
+      <small id="username-help">For a Reader, use a department-based username, such as IT_READER.</small>
+    </div>
+    <div class="form-group" id="first-name-field" style="margin:1rem 0">
+      <label for="id_first_name">{{ form.first_name.label }}</label>{{ form.first_name }}{{ form.first_name.errors }}
+    </div>
+    <div class="form-group" id="last-name-field" style="margin:1rem 0">
+      <label for="id_last_name">{{ form.last_name.label }}</label>{{ form.last_name }}{{ form.last_name.errors }}
+    </div>
+    <div class="form-group" id="email-field" style="margin:1rem 0">
+      <label for="id_email">{{ form.email.label }}</label>{{ form.email }}{{ form.email.errors }}
+    </div>
+    <div class="form-group" style="margin:1rem 0">
+      <label for="id_password1">{{ form.password1.label }}</label>{{ form.password1 }}{{ form.password1.errors }}
+    </div>
+    <div class="form-group" style="margin:1rem 0">
+      <label for="id_password2">{{ form.password2.label }}</label>{{ form.password2 }}{{ form.password2.errors }}
+    </div>
+    <div class="form-group" style="margin:1rem 0">
+      <label for="id_is_active">Active</label>{{ form.is_active }}{{ form.is_active.errors }}
+    </div>
+    <div style="display:flex;gap:.75rem;flex-wrap:wrap;margin-top:1.25rem">
+      <button class="primary" type="submit">Save Account</button>
+      <a class="button" href="{% url 'admin_users' %}">Cancel</a>
+    </div>
+  </form>
+</section>
+<script>
+(function () {
+  const role = document.getElementById('id_role');
+  if (!role) return;
+  const byId = id => document.getElementById(id);
+  const groups = ['first-name-field', 'last-name-field', 'email-field'];
+  function updateReaderFields() {
+    const isReader = role.value === 'READER';
+    groups.forEach(id => { const el = byId(id); if (el) el.hidden = isReader; });
+    const employeeId = byId('id_employee_id');
+    if (employeeId) employeeId.required = !isReader;
+    const employeeIdField = byId('employee-id-field');
+    if (employeeIdField) employeeIdField.hidden = isReader;
+    const department = byId('id_department');
+    if (department) department.required = ['READER', 'MANAGER', 'COMPLIANCE'].includes(role.value);
+    const usernameLabel = byId('username-label');
+    const usernameHelp = byId('username-help');
+    if (usernameLabel) usernameLabel.textContent = isReader ? 'Department account username' : 'Username';
+    if (usernameHelp) usernameHelp.textContent = isReader
+      ? 'This login is shared by members of the selected department; do not use an employee name.'
+      : 'Enter the individual account username.';
+    const departmentHelp = byId('department-help');
+    if (departmentHelp) departmentHelp.textContent = isReader
+      ? 'This shared Reader account does not use an individual employee ID; employees enter their own details when acknowledging a document.'
+      : 'Required for Manager, Compliance and Reader accounts; used to fill document acknowledgments automatically.';
+  }
+  role.addEventListener('change', updateReaderFields);
+  updateReaderFields();
+})();
+</script>
+{% endblock %}

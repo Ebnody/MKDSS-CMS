@@ -28,7 +28,7 @@ DOCUMENT_TRANSITIONS = {
 REQUEST_TRANSITIONS = {
     ComplianceRequest.Status.PENDING_APPROVAL: {ComplianceRequest.Status.APPROVED, ComplianceRequest.Status.REJECTED, ComplianceRequest.Status.CANCELLED},
     ComplianceRequest.Status.APPROVED: {ComplianceRequest.Status.IN_PROGRESS, ComplianceRequest.Status.CANCELLED},
-    ComplianceRequest.Status.IN_PROGRESS: {ComplianceRequest.Status.UNDER_REVIEW, ComplianceRequest.Status.CANCELLED},
+    ComplianceRequest.Status.IN_PROGRESS: {ComplianceRequest.Status.UNDER_REVIEW, ComplianceRequest.Status.DOCUMENT_PENDING_APPROVAL, ComplianceRequest.Status.CANCELLED},
     ComplianceRequest.Status.UNDER_REVIEW: {ComplianceRequest.Status.IN_PROGRESS, ComplianceRequest.Status.DOCUMENT_PENDING_APPROVAL, ComplianceRequest.Status.CANCELLED},
     ComplianceRequest.Status.DOCUMENT_PENDING_APPROVAL: {ComplianceRequest.Status.IN_PROGRESS, ComplianceRequest.Status.DOCUMENT_APPROVED, ComplianceRequest.Status.CANCELLED},
     ComplianceRequest.Status.DOCUMENT_APPROVED: {ComplianceRequest.Status.COMPLETED},

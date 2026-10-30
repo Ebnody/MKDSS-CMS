@@ -5,7 +5,7 @@
   <div>
     <span class="mk-eyebrow">{{ user.profile.get_role_display|upper }}</span>
     <h1>Dashboard</h1>
-    <p>Welcome back, {{ user.get_full_name|default:user.username }}. Here's what's happening in your compliance system.</p>
+    <p>Welcome back, {{ user.get_full_name|default:user.username }}. {% if user.profile.role == 'SYSTEM_ADMIN' %}Monitor accounts, system activity and service health.{% elif user.profile.role == 'COMPLIANCE' %}Track controlled documents and reading completion.{% elif user.profile.role == 'APPROVER' %}Review pending decisions and monitor document publication.{% elif user.profile.role == 'READER' %}Read published controlled documents and complete assigned reading acknowledgments.{% else %}Track your requests, documents and current workflow status.{% endif %}</p>
   </div>
   <div class="mk-heading-actions">
     <a class="mk-button" href="{% url 'notifications' %}">View notifications{% if notification_unread_count %} <b>{{ notification_unread_count }}</b>{% endif %}</a>
@@ -14,14 +14,14 @@
 
 {% if user.profile.role == 'COMPLIANCE' %}
 <div class="mk-kpi-grid">
-  <div class="mk-kpi"><div class="mk-kpi-icon blue">▤</div><div><span>Total Published</span><strong>{{ published_count }}</strong><small>Controlled versions</small></div></div>
-  <div class="mk-kpi"><div class="mk-kpi-icon cyan">♙</div><div><span>Active Users</span><strong>{{ users }}</strong><small>Reading population</small></div></div>
-  <div class="mk-kpi"><div class="mk-kpi-icon green">✓</div><div><span>Completed Reading</span><strong>{{ completed }}</strong><small>{{ percent }}% completion</small></div></div>
-  <div class="mk-kpi"><div class="mk-kpi-icon amber">◷</div><div><span>Pending Reading</span><strong>{{ pending }}</strong><small>{{ in_progress }} in progress</small></div></div>
+  <a class="mk-kpi mk-kpi-link" href="{% url 'compliance_documents' %}" aria-label="Open document control"><div class="mk-kpi-icon blue"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h7"/></svg></div><div><span>Total Published</span><strong>{{ published_count }}</strong><small>Controlled versions · Open document control</small></div><b class="mk-kpi-arrow" aria-hidden="true">↗</b></a>
+  <a class="mk-kpi mk-kpi-link" href="{% url 'reports' %}" aria-label="Open reading reports"><div class="mk-kpi-icon cyan"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20v-1.5a6.5 6.5 0 0 1 13 0V20zM17 5.5a3.5 3.5 0 0 1 0 6.8"/></svg></div><div><span>Active Users</span><strong>{{ users }}</strong><small>Reading population · Open reports</small></div><b class="mk-kpi-arrow" aria-hidden="true">↗</b></a>
+  <a class="mk-kpi mk-kpi-link" href="{% url 'reports' %}" aria-label="View completed reading reports"><div class="mk-kpi-icon green"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg></div><div><span>Completed Reading</span><strong>{{ completed }}</strong><small>{{ percent }}% completion · View reports</small></div><b class="mk-kpi-arrow" aria-hidden="true">↗</b></a>
+  <a class="mk-kpi mk-kpi-link" href="{% url 'reports' %}" aria-label="View pending reading report"><div class="mk-kpi-icon amber"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg></div><div><span>Pending Reading</span><strong>{{ pending }}</strong><small>{{ in_progress }} in progress · View reports</small></div><b class="mk-kpi-arrow" aria-hidden="true">↗</b></a>
 </div>
 
 <div class="mk-dashboard-grid">
-  <section class="mk-card mk-status-card">
+  <section class="mk-card mk-status-card" data-dashboard-card data-dashboard-href="{% url 'reports' %}" tabindex="0" aria-label="Open reading reports">
     <div class="mk-card-head"><div><h2>Reading Status Overview</h2><p>Current completion across published controlled documents.</p></div><a href="{% url 'reports' %}">Open reports →</a></div>
     <div class="mk-status-layout">
       <div class="mk-donut" style="--completion: {{ percent }}%"><div><strong>{{ percent }}%</strong><span>Complete</span></div></div>
@@ -33,11 +33,11 @@
     </div>
   </section>
 
-  <section class="mk-card">
+  <section class="mk-card" data-dashboard-card data-dashboard-href="{% url 'audit_logs' %}" tabindex="0" aria-label="Open audit log">
     <div class="mk-card-head"><div><h2>Recent Activity</h2><p>Latest document reading activity.</p></div><a href="{% url 'audit_logs' %}">View all →</a></div>
     <div class="mk-activity-list">
       {% for row in versions|slice:":5" %}
-      <div class="mk-activity"><span class="mk-activity-icon">▤</span><div><strong>{{ row.version.document.title }}</strong><small>Version {{ row.version.version }} • {{ row.completed }} of {{ row.total }} completed</small></div><span class="mk-status-pill">{{ row.percent }}%</span></div>
+      <a class="mk-activity mk-activity-link" href="{% url 'reading_drilldown' row.version.id %}"><span class="mk-activity-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h7"/></svg></span><span class="mk-activity-body"><strong>{{ row.version.document.title }}</strong><small>Version {{ row.version.version }} · {{ row.completed }} of {{ row.total }} completed</small></span><span class="mk-status-pill">{{ row.percent }}%</span><span class="mk-row-arrow" aria-hidden="true">↗</span></a>
       {% empty %}
       <div class="mk-empty">No published documents are available yet.</div>
       {% endfor %}
@@ -45,7 +45,7 @@
   </section>
 </div>
 
-<section class="mk-card">
+<section class="mk-card" data-dashboard-card data-dashboard-href="{% url 'compliance_documents' %}" tabindex="0" aria-label="Open document control">
   <div class="mk-card-head"><div><h2>Published Documents</h2><p>Monitor reading completion by controlled document version.</p></div><a class="mk-button primary" href="{% url 'compliance_documents' %}">Document Control</a></div>
   <div class="mk-table-wrap"><table class="mk-table"><thead><tr><th>Document</th><th>Version</th><th>Users</th><th>Completed</th><th>In Progress</th><th>Not Started</th><th>Completion</th><th></th></tr></thead><tbody>
   {% for row in versions %}<tr><td><strong>{{ row.version.document.title }}</strong></td><td>v{{ row.version.version }}</td><td>{{ row.total }}</td><td><span class="mk-number green">{{ row.completed }}</span></td><td><span class="mk-number amber">{{ row.in_progress }}</span></td><td>{{ row.not_started }}</td><td><div class="mk-progress"><span style="width:{{ row.percent }}%"></span></div><small>{{ row.percent }}%</small></td><td><a class="mk-link" href="{% url 'reading_drilldown' row.version.id %}">Details</a></td></tr>{% empty %}<tr><td colspan="8" class="mk-empty">No published document versions yet.</td></tr>{% endfor %}
@@ -53,20 +53,73 @@
 </section>
 
 <div class="mk-quick-grid">
-  <a class="mk-quick" href="{% url 'document_create' %}"><span class="mk-quick-icon blue">＋</span><div><strong>New Document</strong><small>Create a controlled document</small></div><b>→</b></a>
-  <a class="mk-quick" href="{% url 'upload_existing_document' %}"><span class="mk-quick-icon blue">⇧</span><div><strong>Upload Existing Document</strong><small>Register a pre-system document</small></div><b>→</b></a>
-  <a class="mk-quick" href="{% url 'compliance_queue' %}"><span class="mk-quick-icon amber">☷</span><div><strong>Request Queue</strong><small>Process submitted requests</small></div><b>→</b></a>
-  <a class="mk-quick" href="{% url 'reports' %}"><span class="mk-quick-icon green">▥</span><div><strong>Reading Reports</strong><small>Generate compliance reports</small></div><b>→</b></a>
+  <a class="mk-quick" href="{% url 'new_request' %}"><span class="mk-quick-icon blue"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span><div><strong>New Document Request</strong><small>Request a new controlled document through the approval workflow</small></div><b>→</b></a>
+  <a class="mk-quick" href="{% url 'upload_existing_document' %}"><span class="mk-quick-icon blue"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m-5 5 5-5 5 5M4 15v5h16v-5"/></svg></span><div><strong>Upload Existing Document</strong><small>Register a pre-system document</small></div><b>→</b></a>
+  <a class="mk-quick" href="{% url 'compliance_queue' %}"><span class="mk-quick-icon amber"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg></span><div><strong>Request Queue</strong><small>Process submitted requests</small></div><b>→</b></a>
+  <a class="mk-quick" href="{% url 'reports' %}"><span class="mk-quick-icon green"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V4h16v16zM8 16v-4m4 4V8m4 8v-6"/></svg></span><div><strong>Reading Reports</strong><small>Generate compliance reports</small></div><b>→</b></a>
 </div>
 
 {% elif user.profile.role == 'SYSTEM_ADMIN' %}
-<div class="mk-kpi-grid"><div class="mk-kpi"><div class="mk-kpi-icon blue">♙</div><div><span>Administration</span><strong>Ready</strong><small>System administration</small></div></div><div class="mk-kpi"><div class="mk-kpi-icon cyan">✓</div><div><span>System Health</span><strong>OK</strong><small>Services available</small></div></div></div>
-<div class="mk-card mk-empty-state"><h2>System Administration</h2><p>Manage accounts, departments, audit records, settings and backups from the administration workspace.</p><a class="mk-button primary" href="{% url 'admin_users' %}">Manage Users</a></div>
+<div class="mk-kpi-grid">
+  <a class="mk-kpi mk-kpi-link" href="{% url 'admin_users' %}"><div class="mk-kpi-icon blue"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20v-1.5a6.5 6.5 0 0 1 13 0V20zM17 5.5a3.5 3.5 0 0 1 0 6.8"/></svg></div><div><span>Total Accounts</span><strong>{{ admin_total_users }}</strong><small>All registered accounts</small></div><b class="mk-kpi-arrow" aria-hidden="true">↗</b></a>
+  <a class="mk-kpi mk-kpi-link" href="{% url 'admin_users' %}"><div class="mk-kpi-icon green"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M4 20v-1.5a8 8 0 0 1 16 0V20"/></svg></div><div><span>Active Accounts</span><strong>{{ admin_active_users }}</strong><small>Enabled accounts and profiles</small></div><b class="mk-kpi-arrow" aria-hidden="true">↗</b></a>
+  <a class="mk-kpi mk-kpi-link" href="{% url 'admin_departments' %}"><div class="mk-kpi-icon cyan"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21V8l9-5 9 5v13M8 21v-7h8v7M7 9h.01M12 9h.01M17 9h.01"/></svg></div><div><span>Active Departments</span><strong>{{ admin_departments }}</strong><small>Departments enabled</small></div><b class="mk-kpi-arrow" aria-hidden="true">↗</b></a>
+  <a class="mk-kpi mk-kpi-link" href="{% url 'audit_logs' %}"><div class="mk-kpi-icon amber"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4zM8 8h8M8 12h8M8 16h5"/></svg></div><div><span>Audit Events</span><strong>{{ admin_audit_events }}</strong><small>Recorded system activity</small></div><b class="mk-kpi-arrow" aria-hidden="true">↗</b></a>
+</div>
+<div class="mk-dashboard-grid">
+  <section class="mk-card" data-dashboard-card data-dashboard-href="{% url 'admin_users' %}" tabindex="0" aria-label="Open system administration">
+    <div class="mk-card-head"><div><h2>System Administration</h2><p>Live session and user activity overview.</p></div><a href="{% url 'admin_users' %}">Manage accounts →</a></div>
+    <div class="mk-mini-stat-grid"><div class="mk-mini-stat"><span>Currently online</span><strong>{{ admin_online_users }}</strong><small>Users with active sessions</small></div><div class="mk-mini-stat"><span>Reading in progress</span><strong>{{ admin_reading_now }}</strong><small>Reading records marked in progress</small></div></div>
+    <div class="mk-chart-panel"><div class="mk-chart-panel-head"><h3>Activity snapshot</h3><span>Relative comparison of current counts</span></div><div class="mk-chart-list">{% for item in admin_activity_chart %}<div class="mk-chart-row"><div class="mk-chart-label"><span>{{ item.label }}</span><strong>{{ item.count }}</strong></div><div class="mk-chart-track"><span class="tone-{{ item.tone }}" style="width:{{ item.percent }}%"></span></div></div>{% endfor %}</div></div>
+    <h3 class="mk-chart-title">Accounts by role</h3><div class="mk-chart-list">{% for item in admin_role_chart %}<div class="mk-chart-row"><div class="mk-chart-label"><span>{{ item.label }}</span><strong>{{ item.count }}</strong></div><div class="mk-chart-track"><span class="tone-{{ item.tone }}" style="width:{{ item.percent }}%"></span></div></div>{% endfor %}</div>
+  </section>
+  <section class="mk-card" data-dashboard-card data-dashboard-href="{% url 'admin_health' %}" tabindex="0" aria-label="Open system health">
+    <div class="mk-card-head"><div><h2>System Health</h2><p>{{ admin_health_ok }} of {{ admin_health_total }} checks currently pass.</p></div><a href="{% url 'admin_health' %}">Full health report →</a></div>
+    <div class="mk-health-summary"><strong>{{ admin_health_ok }}/{{ admin_health_total }}</strong><span>checks passing</span><div class="mk-chart-track"><span class="tone-green" style="width:{% widthratio admin_health_ok admin_health_total 100 %}%"></span></div></div>
+    <div class="mk-health-list">{% for item in admin_health_checks %}<div class="mk-health-row"><span class="mk-health-indicator {% if item.ok %}is-ok{% else %}is-fail{% endif %}"></span><div><strong>{{ item.name }}</strong><small>{{ item.detail }}</small></div><b>{% if item.ok %}Healthy{% else %}Check{% endif %}</b></div>{% endfor %}</div>
+  </section>
+</div>
+<div class="mk-quick-grid"><a class="mk-quick" href="{% url 'admin_users' %}"><span class="mk-quick-icon blue"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20v-1.5a6.5 6.5 0 0 1 13 0V20zM17 5.5a3.5 3.5 0 0 1 0 6.8"/></svg></span><div><strong>User Management</strong><small>Accounts and role access</small></div><b>→</b></a><a class="mk-quick" href="{% url 'admin_departments' %}"><span class="mk-quick-icon cyan"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21V8l9-5 9 5v13M8 21v-7h8v7M7 9h.01M12 9h.01M17 9h.01"/></svg></span><div><strong>Departments</strong><small>Manage active departments</small></div><b>→</b></a><a class="mk-quick" href="{% url 'audit_logs' %}"><span class="mk-quick-icon amber"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4zM8 8h8M8 12h8M8 16h5"/></svg></span><div><strong>Audit Log</strong><small>Review recorded activity</small></div><b>→</b></a><a class="mk-quick" href="{% url 'admin_health' %}"><span class="mk-quick-icon green"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 20 6v5c0 5-3.4 8.2-8 10-4.6-1.8-8-5-8-10V6zM8 12l2.5 2.5L16 9"/></svg></span><div><strong>System Health</strong><small>Check application services</small></div><b>→</b></a></div>
 {% elif user.profile.role == 'APPROVER' %}
-<div class="mk-kpi-grid"><div class="mk-kpi"><div class="mk-kpi-icon amber">✓</div><div><span>Approval Workspace</span><strong>Ready</strong><small>Review pending requests</small></div></div><div class="mk-kpi"><div class="mk-kpi-icon green">▤</div><div><span>Published Documents</span><strong>Read</strong><small>Controlled access</small></div></div></div>
-<div class="mk-card mk-empty-state"><h2>Approver Workspace</h2><p>Review requests, open the actual controlled document, check Compliance remarks, and record the final approval decision.</p><a class="mk-button primary" href="{% url 'approval_queue' %}">Open Approval Queue</a></div>
+<div class="mk-kpi-grid">
+  <a class="mk-kpi mk-kpi-link" href="{% url 'approval_queue' %}"><div class="mk-kpi-icon amber"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4H5v17h14V4h-3M9 3h6v4H9zM8 13l2.5 2.5L16 10"/></svg></div><div><span>Requests Awaiting Approval</span><strong>{{ approver_pending_requests }}</strong><small>Initial request decisions</small></div><b class="mk-kpi-arrow">↗</b></a>
+  <a class="mk-kpi mk-kpi-link" href="{% url 'approval_queue' %}"><div class="mk-kpi-icon blue"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h5"/></svg></div><div><span>Documents Awaiting Approval</span><strong>{{ approver_pending_documents }}</strong><small>Final document decisions</small></div><b class="mk-kpi-arrow">↗</b></a>
+  <a class="mk-kpi mk-kpi-link" href="{% url 'published_documents' %}"><div class="mk-kpi-icon green"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5A2.5 2.5 0 0 1 7.5 2H20v18H7.5A2.5 2.5 0 0 0 5 22zM5 4.5V22M9 7h7M9 11h7"/></svg></div><div><span>Published Documents</span><strong>{{ published_count }}</strong><small>Available controlled documents</small></div><b class="mk-kpi-arrow">↗</b></a>
+  <a class="mk-kpi mk-kpi-link" href="{% url 'published_documents' %}"><div class="mk-kpi-icon cyan"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18v16H3zM7 8h10M7 12h10M7 16h6"/></svg></div><div><span>Open Documents</span><strong>{{ approver_open_readings }}</strong><small>Reading records in progress</small></div><b class="mk-kpi-arrow">↗</b></a>
+</div>
+<div class="mk-dashboard-grid">
+  <section class="mk-card" data-dashboard-card data-dashboard-href="{% url 'approval_queue' %}" tabindex="0" aria-label="Open approval workspace">
+    <div class="mk-card-head"><div><h2>Approval Workspace</h2><p>Requests, controlled documents, review remarks and recorded decisions.</p></div><a href="{% url 'approval_queue' %}">Open workspace →</a></div>
+    <div class="mk-mini-stat-grid"><div class="mk-mini-stat"><span>Compliance reviews recorded</span><strong>{{ approver_review_count }}</strong></div><div class="mk-mini-stat"><span>Reviews with remarks</span><strong>{{ approver_review_remarks }}</strong></div><div class="mk-mini-stat"><span>Document decisions</span><strong>{{ approver_document_decisions }}</strong></div><div class="mk-mini-stat"><span>Request decisions</span><strong>{{ approver_request_decisions }}</strong></div></div>
+    <div class="mk-dashboard-grid mk-dashboard-grid-inner"><div><h3 class="mk-chart-title">Request status</h3><div class="mk-chart-list">{% for item in approver_request_chart %}<div class="mk-chart-row"><div class="mk-chart-label"><span>{{ item.label }}</span><strong>{{ item.count }}</strong></div><div class="mk-chart-track"><span class="tone-{{ item.tone }}" style="width:{{ item.percent }}%"></span></div></div>{% endfor %}</div></div><div><h3 class="mk-chart-title">Document control status</h3><div class="mk-chart-list">{% for item in approver_document_chart %}<div class="mk-chart-row"><div class="mk-chart-label"><span>{{ item.label }}</span><strong>{{ item.count }}</strong></div><div class="mk-chart-track"><span class="tone-{{ item.tone }}" style="width:{{ item.percent }}%"></span></div></div>{% endfor %}</div></div></div>
+  </section>
+  <section class="mk-card" data-dashboard-card data-dashboard-href="{% url 'published_documents' %}" tabindex="0" aria-label="Open published document list">
+    <div class="mk-card-head"><div><h2>Published Documents</h2><p>Latest documents available to read.</p></div><a href="{% url 'published_documents' %}">View all →</a></div>
+    <div class="mk-activity-list">{% for doc in approver_published_documents %}<a class="mk-activity mk-activity-link" href="{% url 'read_document' doc.pk %}"><span class="mk-activity-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h7"/></svg></span><span class="mk-activity-body"><strong>{{ doc.title }}</strong><small>{{ doc.document_number|default:"Controlled document" }} · v{{ doc.published_version.version }}</small></span><span class="mk-status-pill">Published</span></a>{% empty %}<div class="mk-empty">No published documents are available yet.</div>{% endfor %}</div>
+  </section>
+</div>
 {% else %}
-<div class="mk-kpi-grid"><div class="mk-kpi"><div class="mk-kpi-icon blue">▤</div><div><span>Document Center</span><strong>Ready</strong><small>Published documents</small></div></div><div class="mk-kpi"><div class="mk-kpi-icon green">♢</div><div><span>Notifications</span><strong>{{ notification_unread_count }}</strong><small>Unread updates</small></div></div></div>
-<div class="mk-card mk-empty-state"><h2>Employee Document Center</h2><p>Read published controlled documents, track your requests and submit new document or change requests.</p><div class="mk-actions"><a class="mk-button primary" href="{% url 'published_documents' %}">View Documents</a><a class="mk-button" href="{% url 'new_request' %}">New Document Request</a></div></div>
+<div class="mk-kpi-grid">
+  <a class="mk-kpi mk-kpi-link" href="{% url 'published_documents' %}"><div class="mk-kpi-icon blue"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5A2.5 2.5 0 0 1 7.5 2H20v18H7.5A2.5 2.5 0 0 0 5 22zM5 4.5V22M9 7h7M9 11h7"/></svg></div><div><span>Published Documents</span><strong>{{ published_count }}</strong><small>Browse controlled documents</small></div><b class="mk-kpi-arrow">↗</b></a>
+  <a class="mk-kpi mk-kpi-link" href="{% url 'requests' %}"><div class="mk-kpi-icon cyan"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h5"/></svg></div><div><span>My Requests</span><strong>{{ my_requests_count }}</strong><small>Requests submitted by you</small></div><b class="mk-kpi-arrow">↗</b></a>
+  <a class="mk-kpi mk-kpi-link" href="{% url 'requests' %}"><div class="mk-kpi-icon amber"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg></div><div><span>Open Requests</span><strong>{{ my_open_requests_count }}</strong><small>Not yet completed, rejected or cancelled</small></div><b class="mk-kpi-arrow">↗</b></a>
+  <a class="mk-kpi mk-kpi-link" href="{% url 'published_documents' %}"><div class="mk-kpi-icon green"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18v16H3zM7 8h10M7 12h10M7 16h6"/></svg></div><div><span>Open Documents</span><strong>{{ my_open_readings_count }}</strong><small>Documents you are reading</small></div><b class="mk-kpi-arrow">↗</b></a>
+</div>
+<div class="mk-dashboard-grid">
+  <section class="mk-card" data-dashboard-card data-dashboard-href="{% url 'published_documents' %}" tabindex="0" aria-label="Open employee document center">
+    <div class="mk-card-head"><div><h2>Employee Document Center</h2><p>Documents you uploaded or registered and their current workflow state.</p></div><a href="{% url 'published_documents' %}">Open document center →</a></div>
+    <div class="mk-mini-stat-grid"><div class="mk-mini-stat"><span>My documents</span><strong>{{ my_document_total }}</strong><small>Created or uploaded by you</small></div><div class="mk-mini-stat"><span>My published docs</span><strong>{{ my_own_published_count }}</strong><small>Your documents now published</small></div><div class="mk-mini-stat"><span>Still in workflow</span><strong>{{ my_own_workflow_count }}</strong><small>Awaiting review, approval or revision</small></div></div>
+    <div class="mk-chart-panel"><div class="mk-chart-panel-head"><h3>Document workflow</h3><span>My documents by current status</span></div><div class="mk-chart-list">{% for item in my_document_chart %}<div class="mk-chart-row"><div class="mk-chart-label"><span>{{ item.label }}</span><strong>{{ item.count }}</strong></div><div class="mk-chart-track"><span class="tone-{{ item.tone }}" style="width:{{ item.percent }}%"></span></div></div>{% endfor %}</div></div>
+    <div class="mk-table-wrap mk-top-gap"><table class="mk-table mk-dashboard-table"><thead><tr><th>Document</th><th>Current status</th><th>Latest version</th><th>Created</th><th>Action</th></tr></thead><tbody>
+    {% for row in my_owned_documents %}<tr><td><strong>{{ row.document.title }}</strong><small class="mk-table-subtext">{{ row.document.document_number|default:"No document number" }}</small></td><td><span class="mk-status-pill is-{{ row.status_tone }}">{{ row.status_label }}</span></td><td>{% if row.latest_version %}v{{ row.latest_version.version }}{% else %}—{% endif %}</td><td>{{ row.document.created_at|date:"d M Y" }}</td><td>{% if row.document.published_version_id %}<a class="mk-link" href="{% url 'read_document' row.document.pk %}">Open document</a>{% else %}<span class="mk-muted-label">In workflow</span>{% endif %}</td></tr>{% empty %}<tr><td colspan="5" class="mk-empty">You have not created or uploaded any documents yet.</td></tr>{% endfor %}
+    </tbody></table></div>
+  </section>
+  <section class="mk-card" data-dashboard-card data-dashboard-href="{% url 'requests' %}" tabindex="0" aria-label="Open my requests overview">
+    <div class="mk-card-head"><div><h2>My Requests</h2><p>Request status summary for your own submissions only.</p></div><a href="{% url 'requests' %}">View my requests →</a></div>
+    <div class="mk-mini-stat-grid"><div class="mk-mini-stat"><span>Approved / completed</span><strong>{{ my_approved_requests }}</strong></div><div class="mk-mini-stat"><span>Under review / processing</span><strong>{{ my_under_review_requests }}</strong></div><div class="mk-mini-stat"><span>Rejected</span><strong>{{ my_rejected_requests }}</strong></div></div>
+    <h3 class="mk-chart-title">Request status distribution</h3><div class="mk-chart-list">{% for item in my_request_chart %}<div class="mk-chart-row"><div class="mk-chart-label"><span>{{ item.label }}</span><strong>{{ item.count }}</strong></div><div class="mk-chart-track"><span class="tone-{{ item.tone }}" style="width:{{ item.percent }}%"></span></div></div>{% endfor %}</div>
+  </section>
+</div>
+<div class="mk-quick-grid mk-role-actions"><a class="mk-quick" href="{% url 'new_request' %}"><span class="mk-quick-icon blue"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span><div><strong>New Document Request</strong><small>Request a new controlled document</small></div><b>→</b></a><a class="mk-quick" href="{% url 'change_request' %}"><span class="mk-quick-icon amber"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 16-.8 4.8L8 20l11-11-4-4zM13.5 6.5l4 4"/></svg></span><div><strong>Change Request</strong><small>Request an update to a document</small></div><b>→</b></a><a class="mk-quick" href="{% url 'published_documents' %}"><span class="mk-quick-icon green"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5A2.5 2.5 0 0 1 7.5 2H20v18H7.5A2.5 2.5 0 0 0 5 22zM5 4.5V22M9 7h7M9 11h7"/></svg></span><div><strong>My Documents</strong><small>Open the document center</small></div><b>→</b></a></div>
 {% endif %}
 {% endblock %}

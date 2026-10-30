@@ -23,7 +23,7 @@ from .notification_service import (
 class NotificationWorkflowTests(TestCase):
     def setUp(self):
         self.department = Department.objects.create(name="IT")
-        self.user = self.make_user("notif_user", Role.USER)
+        self.user = self.make_user("notif_user", Role.MANAGER)
         self.compliance = self.make_user("notif_compliance", Role.COMPLIANCE)
         self.approver = self.make_user("notif_approver", Role.APPROVER)
 
@@ -73,7 +73,7 @@ class NotificationWorkflowTests(TestCase):
 
     def test_user_cannot_mark_another_users_notification_read(self):
         other = User.objects.create_user("other", password="StrongPassword!123")
-        other.profile.role = Role.USER
+        other.profile.role = Role.MANAGER
         other.profile.department = self.department
         other.profile.save()
         note = Notification.objects.create(
@@ -113,7 +113,7 @@ class NotificationWorkflowTests(TestCase):
 class NotificationPublicationRegressionTests(TestCase):
     def setUp(self):
         self.department = Department.objects.create(name="IT")
-        self.user = self.make_user("reg_user", Role.USER)
+        self.user = self.make_user("reg_user", Role.MANAGER)
         self.compliance = self.make_user("reg_compliance", Role.COMPLIANCE)
         self.approver = self.make_user("reg_approver", Role.APPROVER)
 

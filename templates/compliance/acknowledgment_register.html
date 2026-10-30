@@ -1,0 +1,19 @@
+{% extends "compliance/base.html" %}
+{% block title %}Individual Reading Acknowledgments | MKDSS CMS{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>Individual Reading Acknowledgments</h1><p>Employee-submitted evidence for published compliance document versions.</p></div></div>
+<section class="card">
+  <form method="get" style="display:flex;gap:.75rem;flex-wrap:wrap;align-items:end;margin-bottom:1rem">
+    <div class="form-group"><label for="q">Search</label><input id="q" name="q" value="{{ q }}" placeholder="Employee ID, name, or document" class="form-control"></div>
+    <div class="form-group"><label for="department">Department</label><select id="department" name="department" class="form-control"><option value="">All departments</option>{% for dept in departments %}<option value="{{ dept.pk }}" {% if department_id == dept.pk|stringformat:'s' %}selected{% endif %}>{{ dept.name }}</option>{% endfor %}</select></div>
+    <button type="submit" class="primary">Filter</button><a href="{% url 'acknowledgment_register' %}" class="button">Clear</a>
+    <a href="?q={{ q|urlencode }}&amp;department={{ department_id|urlencode }}&amp;format=csv" class="button">Export CSV</a>
+    <a href="?q={{ q|urlencode }}&amp;department={{ department_id|urlencode }}&amp;format=pdf" class="button">Export PDF</a>
+  </form>
+  <div style="overflow-x:auto"><table><thead><tr><th>Employee ID</th><th>Employee Name</th><th>Department</th><th>Document</th><th>Version</th><th>Submitted At</th><th>Identity Verification</th><th>Shared Account</th></tr></thead><tbody>
+  {% for ack in acknowledgments %}<tr><td>{{ ack.employee_id }}</td><td>{{ ack.employee_name }}</td><td>{{ ack.department.name }}</td><td>{{ ack.document_title }}</td><td>{{ ack.document_version_label }}</td><td>{{ ack.acknowledged_at|date:"Y-m-d H:i:s" }}</td><td>{% if ack.identity_verified %}Verified{% else %}Unverified{% endif %}</td><td>{{ ack.submitted_by.username }}</td></tr>
+  {% empty %}<tr><td colspan="8">No individual acknowledgments found.</td></tr>{% endfor %}
+  </tbody></table></div>
+  <p><small>Showing up to 1,000 matching records. Employee identity is self-declared unless verified against an authorized employee directory.</small></p>
+</section>
+{% endblock %}

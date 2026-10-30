@@ -6,7 +6,9 @@ class Role(models.TextChoices):
     SYSTEM_ADMIN = "SYSTEM_ADMIN", "System Admin"
     COMPLIANCE = "COMPLIANCE", "Compliance"
     APPROVER = "APPROVER", "Approver"
-    USER = "USER", "User"
+    USER = "USER", "User"  # legacy value retained for migration compatibility
+    MANAGER = "MANAGER", "Manager"
+    READER = "READER", "Reader"
 
 
 
@@ -44,8 +46,14 @@ class Department(models.Model):
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
     role = models.CharField(max_length=30, choices=Role.choices, default=Role.USER)
+    employee_id = models.CharField(max_length=80, unique=True, null=True, blank=True)
     department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True, related_name="users")
     active = models.BooleanField(default=True)
+
+    def save(self, *args, **kwargs):
+        if self.employee_id:
+            self.employee_id = self.employee_id.strip().upper()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.user.username} ({self.get_role_display()})"
@@ -75,6 +83,18 @@ class Document(models.Model):
 
     source = models.CharField(max_length=20, choices=Source.choices, default=Source.SYSTEM)
     archived_at = models.DateTimeField(null=True, blank=True)
+
+    class Audience(models.TextChoices):
+        UNCLASSIFIED = "UNCLASSIFIED", "Not Classified"
+        PUBLIC = "PUBLIC", "Public"
+        DEPARTMENT = "DEPARTMENT", "Specific Department"
+        ALL_MANAGERS = "ALL_MANAGERS", "All Management Staff"
+        SELECTED_MANAGERS = "SELECTED_MANAGERS", "Selected Departments (Managers)"
+
+    audience = models.CharField(max_length=24, choices=Audience.choices, default=Audience.UNCLASSIFIED, db_index=True)
+    audience_department = models.ForeignKey(Department, null=True, blank=True, on_delete=models.PROTECT, related_name="audience_documents")
+    audience_managers = models.ManyToManyField(User, blank=True, related_name="management_audience_documents")  # retained for legacy records
+    audience_departments = models.ManyToManyField(Department, blank=True, related_name="selected_management_documents")
 
     def __str__(self):
         return self.title
@@ -231,3 +251,51 @@ class SystemSetting(models.Model):
 
     def __str__(self):
         return self.key
+
+
+class DocumentAcknowledgment(models.Model):
+    """Individual employee confirmation for a specific published document version.
+
+    Department logins may be shared, so this record captures the employee-entered
+    identity separately from the CMS account that submitted it.
+    """
+    employee_id = models.CharField(max_length=80, db_index=True)
+    employee_name = models.CharField(max_length=180)
+    department = models.ForeignKey(Department, on_delete=models.PROTECT, related_name="document_acknowledgments")
+    document = models.ForeignKey(Document, null=True, blank=True, on_delete=models.SET_NULL, related_name="acknowledgments")
+    version = models.ForeignKey(DocumentVersion, null=True, blank=True, on_delete=models.SET_NULL, related_name="acknowledgments")
+    document_title = models.CharField(max_length=255)
+    document_version_label = models.CharField(max_length=30)
+    submitted_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name="submitted_document_acknowledgments")
+    identity_user = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="account_document_acknowledgments",
+        help_text="Set for individual Manager and Compliance account acknowledgments; null for shared Reader accounts.",
+    )
+    confirmation_text_version = models.CharField(max_length=20, default="1")
+    identity_verified = models.BooleanField(default=False)
+    acknowledged_at = models.DateTimeField(auto_now_add=True)
+    audit_reference = models.CharField(max_length=100, blank=True)
+
+    class Meta:
+        ordering = ["-acknowledged_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["employee_id", "version"], name="uniq_employee_document_ack_version"),
+            models.UniqueConstraint(
+                fields=["identity_user", "version"],
+                condition=models.Q(identity_user__isnull=False),
+                name="uniq_account_document_ack_version",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["department", "acknowledged_at"], name="ack_dept_date_idx"),
+            models.Index(fields=["employee_id", "acknowledged_at"], name="ack_employee_date_idx"),
+        ]
+
+    def save(self, *args, **kwargs):
+        self.employee_id = (self.employee_id or "").strip().upper()
+        self.employee_name = " ".join((self.employee_name or "").split())
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.employee_id} — {self.document_title} v{self.document_version_label}"

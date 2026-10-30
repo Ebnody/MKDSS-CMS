@@ -1,8 +1,8 @@
 {% extends "compliance/base.html" %}
 {% block content %}
 <div class="row">
-    <h1>{% if role == 'USER' %}My Requests{% else %}All Document Requests{% endif %}</h1>
-    {% if role == 'USER' or role == 'COMPLIANCE' %}
+    <h1>{% if role == 'USER' or role == 'MANAGER' %}My Requests{% else %}All Document Requests{% endif %}</h1>
+    {% if role == 'USER' or role == 'MANAGER' or role == 'COMPLIANCE' %}
     <div class="actions">
         <a class="button" href="{% url 'new_request' %}">New Document Request</a>
         <a class="button" href="{% url 'change_request' %}">Change Request</a>
@@ -15,7 +15,7 @@
 {% for r in requests %}
 <tr>
     <td>{{ r.request_number }}</td>
-    <td>{{ r.get_request_type_display }}</td>
+    <td>{% if r.request_type == "NEW_DOCUMENT" %}{% if r.requested_change == "ADOPTION" %}Adoption of External Document{% else %}New Document{% endif %}{% else %}{{ r.get_request_type_display }}{% endif %}</td>
     <td>{{ r.requester.username }}</td>
     <td>{{ r.get_status_display }}</td>
     <td>{{ r.submitted_at }}</td>

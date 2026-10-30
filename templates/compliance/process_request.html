@@ -6,9 +6,16 @@
     <p><b>Requester:</b> {{ request_obj.requester.username }}</p>
     <p><b>Department:</b> {{ request_obj.department }}</p>
     <p><b>Status:</b> {{ request_obj.get_status_display }}</p>
-    <p><b>Reason:</b> {{ request_obj.reason }}</p>
-    {% if request_obj.requested_change %}<p><b>Requested change:</b> {{ request_obj.requested_change }}</p>{% endif %}
-    {% if request_obj.description %}<p><b>Description:</b> {{ request_obj.description }}</p>{% endif %}
+    {% if is_change %}
+      <p><b>Justification:</b> {{ request_obj.reason }}</p>
+      <p><b>Requested change:</b> {{ request_obj.requested_change }}</p>
+    {% else %}
+      <p><b>Request type:</b> {% if request_obj.requested_change == "ADOPTION" %}Adoption of External Document{% else %}New Document{% endif %}</p>
+      <p><b>Affected Process(es):</b> {{ request_obj.description }}</p>
+      <p><b>Process Owner:</b> {{ request_obj.requested_title }}</p>
+      <p><b>Justification for the request:</b> {{ request_obj.reason }}</p>
+      <p><b>Enclosure (Title and No. of pages):</b> {{ request_obj.additional_notes }}</p>
+    {% endif %}
 
     {% if can_upload %}
     <form method="post" enctype="multipart/form-data">

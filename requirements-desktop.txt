@@ -1,0 +1,3 @@
+# Desktop shell dependencies; these are installed on the build workstation only.
+pywebview>=5.4,<7
+pyinstaller>=6.10,<7

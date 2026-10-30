@@ -8,7 +8,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.exceptions import PermissionDenied
 from django.db import connection, transaction
-from django.db.models import Q
+from django.db.models import Count, OuterRef, Q, Subquery
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -27,7 +27,7 @@ from .services import (
     transition_request,
     version_preview,
 )
-from .reports import reading_csv, reading_pdf
+from .reports import reading_csv, reading_pdf, acknowledgment_csv, acknowledgment_pdf
 from .notification_service import (
     notify_request_submitted,
     notify_request_decision,
@@ -38,7 +38,7 @@ from .notification_service import (
 )
 
 
-READ_ROLES = (Role.USER, Role.COMPLIANCE, Role.APPROVER)
+READ_ROLES = (Role.USER, Role.READER, Role.MANAGER, Role.COMPLIANCE, Role.APPROVER)
 
 
 def require(request, *roles):
@@ -47,7 +47,7 @@ def require(request, *roles):
 
 
 def active_users():
-    return User.objects.filter(is_active=True, profile__active=True, profile__role=Role.USER).select_related("profile__department")
+    return User.objects.filter(is_active=True, profile__active=True, profile__role__in=[Role.USER, Role.READER, Role.MANAGER]).select_related("profile__department")
 
 
 def published_versions():
@@ -58,9 +58,69 @@ def published_versions():
     ).select_related("document")
 
 
+def can_read_document(user, document):
+    """Apply audience policy to every document read/stream endpoint."""
+    role = getattr(getattr(user, "profile", None), "role", None)
+    if role in {Role.SYSTEM_ADMIN, Role.COMPLIANCE, Role.APPROVER}:
+        return True
+    if document.audience == Document.Audience.PUBLIC:
+        return True
+    if document.audience == Document.Audience.DEPARTMENT:
+        profile = getattr(user, "profile", None)
+        return bool(profile and profile.department_id and profile.department_id == document.audience_department_id)
+    if document.audience == Document.Audience.ALL_MANAGERS:
+        return role == Role.MANAGER
+    if document.audience == Document.Audience.SELECTED_MANAGERS:
+        return role == Role.MANAGER and bool(getattr(getattr(user, "profile", None), "department_id", None)) and document.audience_departments.filter(pk=user.profile.department_id).exists()
+    return False
+
+
+def visible_documents_for(user):
+    qs = Document.objects.filter(published_version__isnull=False, archived_at__isnull=True).select_related("published_version", "audience_department")
+    role = getattr(getattr(user, "profile", None), "role", None)
+    if role in {Role.SYSTEM_ADMIN, Role.COMPLIANCE, Role.APPROVER}:
+        return qs
+    profile = getattr(user, "profile", None)
+    filters = Q(audience=Document.Audience.PUBLIC)
+    if role == Role.MANAGER:
+        filters |= Q(audience=Document.Audience.ALL_MANAGERS)
+        if profile and profile.department_id:
+            filters |= Q(audience=Document.Audience.SELECTED_MANAGERS, audience_departments=profile.department_id)
+    if profile and profile.department_id:
+        filters |= Q(audience=Document.Audience.DEPARTMENT, audience_department_id=profile.department_id)
+    return qs.filter(filters).distinct()
+
+
 @login_required
 def dashboard(request):
+    """Render role-specific dashboard metrics and safe, read-only summaries."""
+    from django.contrib.sessions.models import Session
+
     role = request.user.profile.role
+    if role == Role.READER:
+        return redirect("published_documents")
+    context = {
+        "notification_unread_count": request.user.notifications.filter(is_read=False).count(),
+    }
+
+    def chart_item(label, count, total, tone="blue"):
+        count = int(count or 0)
+        return {"label": label, "count": count, "percent": round(count * 100 / total) if total else 0, "tone": tone}
+
+    def request_status_chart(queryset):
+        total = queryset.count()
+        groups = [
+            ("Awaiting approval", queryset.filter(status=ComplianceRequest.Status.PENDING_APPROVAL).count(), "amber"),
+            ("Approved", queryset.filter(status=ComplianceRequest.Status.APPROVED).count(), "blue"),
+            ("In progress", queryset.filter(status=ComplianceRequest.Status.IN_PROGRESS).count(), "blue"),
+            ("Compliance review", queryset.filter(status=ComplianceRequest.Status.UNDER_REVIEW).count(), "cyan"),
+            ("Final approval / document approved", queryset.filter(status__in=[ComplianceRequest.Status.DOCUMENT_PENDING_APPROVAL, ComplianceRequest.Status.DOCUMENT_APPROVED]).count(), "violet"),
+            ("Published / completed", queryset.filter(status=ComplianceRequest.Status.COMPLETED).count(), "green"),
+            ("Rejected", queryset.filter(status=ComplianceRequest.Status.REJECTED).count(), "red"),
+            ("Cancelled", queryset.filter(status=ComplianceRequest.Status.CANCELLED).count(), "gray"),
+        ]
+        return [chart_item(label, count, total, tone) for label, count, tone in groups]
+
     if role == Role.COMPLIANCE:
         versions = list(published_versions().order_by("document__title"))
         users = list(active_users())
@@ -82,7 +142,7 @@ def dashboard(request):
             })
             completed_total += completed
             in_progress_total += in_progress
-        return render(request, "compliance/dashboard.html", {
+        context.update({
             "versions": rows,
             "users": len(users),
             "published_count": len(versions),
@@ -92,22 +152,207 @@ def dashboard(request):
             "expected": total_expected,
             "percent": round(completed_total * 100 / total_expected, 1) if total_expected else 0,
         })
-    if role == Role.APPROVER:
-        return redirect("approval_queue")
-    if role == Role.SYSTEM_ADMIN:
-        return redirect("admin_users")
-    return redirect("published_documents")
 
+    elif role == Role.SYSTEM_ADMIN:
+        # Online means a non-expired Django session with a decodable user id.
+        online_ids = set()
+        for session in Session.objects.filter(expire_date__gt=timezone.now()).only("session_data"):
+            try:
+                session_user_id = session.get_decoded().get("_auth_user_id")
+                if session_user_id:
+                    online_ids.add(str(session_user_id))
+            except Exception:
+                continue
+        active_user_ids = set(str(user_id) for user_id in User.objects.filter(is_active=True, profile__active=True).values_list("id", flat=True))
+        online_ids.intersection_update(active_user_ids)
+        all_user_count = User.objects.count()
+        role_counts = []
+        for role_value, role_label in Role.choices:
+            count = User.objects.filter(profile__role=role_value).count()
+            role_counts.append(chart_item(role_label, count, all_user_count, "blue" if role_value == Role.SYSTEM_ADMIN else "cyan" if role_value == Role.COMPLIANCE else "violet" if role_value == Role.APPROVER else "green"))
+
+        # Read-only checks; unlike the dedicated health page this does not create test files/folders.
+        db_ok = False
+        try:
+            connection.ensure_connection()
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT 1")
+                db_ok = cursor.fetchone() == (1,)
+        except Exception:
+            db_ok = False
+        media_root = Path(settings.MEDIA_ROOT)
+        backup_root = media_root / "backups"
+        try:
+            storage_ok = media_root.is_dir() and os.access(media_root, os.W_OK)
+        except OSError:
+            storage_ok = False
+        try:
+            backup_ok = backup_root.is_dir() and os.access(backup_root, os.W_OK)
+        except OSError:
+            backup_ok = False
+        try:
+            soffice = _find_libreoffice()
+            libreoffice_ok = bool(soffice and Path(soffice).is_file())
+        except Exception:
+            libreoffice_ok = False
+        health_checks = [
+            {"name": "Database", "ok": db_ok, "detail": "Connection and query successful" if db_ok else "Database query failed"},
+            {"name": "Document storage", "ok": storage_ok, "detail": "Directory exists and is writable" if storage_ok else "Missing or not writable"},
+            {"name": "Backup storage", "ok": backup_ok, "detail": "Backup directory exists and is writable" if backup_ok else "Missing or not writable"},
+            {"name": "LibreOffice preview", "ok": libreoffice_ok, "detail": "Executable detected" if libreoffice_ok else "Not detected"},
+        ]
+        reading_now_count = ReadingRecord.objects.filter(status=ReadingRecord.Status.IN_PROGRESS).count()
+        activity_scale = max(len(online_ids), reading_now_count, 1)
+        context.update({
+            "admin_total_users": User.objects.count(),
+            "admin_active_users": User.objects.filter(is_active=True, profile__active=True).count(),
+            "admin_departments": Department.objects.filter(active=True).count(),
+            "admin_audit_events": AuditLog.objects.count(),
+            "admin_online_users": len(online_ids),
+            "admin_reading_now": reading_now_count,
+            "admin_activity_chart": [
+                chart_item("Currently online", len(online_ids), activity_scale, "green"),
+                chart_item("Reading in progress", reading_now_count, activity_scale, "cyan"),
+            ],
+            "admin_role_chart": role_counts,
+            "admin_health_checks": health_checks,
+            "admin_health_ok": sum(1 for item in health_checks if item["ok"]),
+            "admin_health_total": len(health_checks),
+        })
+
+    elif role == Role.APPROVER:
+        all_requests = ComplianceRequest.objects.all()
+        all_docs = Document.objects.filter(archived_at__isnull=True)
+        pending_requests = all_requests.filter(status=ComplianceRequest.Status.PENDING_APPROVAL).count()
+        pending_documents = DocumentVersion.objects.filter(
+            status=DocumentVersion.Status.PENDING_APPROVAL,
+            reviews__decision=DocumentReview.Decision.ACCEPTED,
+        ).distinct().count()
+        published = list(Document.objects.filter(
+            published_version__isnull=False, archived_at__isnull=True,
+        ).select_related("published_version").order_by("-published_version__publication_at", "-pk")[:8])
+        request_total = all_requests.count()
+        document_total = all_docs.count()
+        document_chart = [
+            chart_item("Draft / preparation", all_docs.filter(state=Document.State.DRAFT).count(), document_total, "gray"),
+            chart_item("Compliance review", all_docs.filter(state=Document.State.UNDER_REVIEW).count(), document_total, "cyan"),
+            chart_item("Revision required", all_docs.filter(state=Document.State.REVISION_REQUIRED).count(), document_total, "red"),
+            chart_item("Final approval", all_docs.filter(state=Document.State.PENDING_APPROVAL).count(), document_total, "amber"),
+            chart_item("Published", all_docs.filter(state=Document.State.PUBLISHED).count(), document_total, "green"),
+        ]
+        context.update({
+            "approver_pending_requests": pending_requests,
+            "approver_pending_documents": pending_documents,
+            "published_count": published_versions().count(),
+            "approver_open_readings": ReadingRecord.objects.filter(status=ReadingRecord.Status.IN_PROGRESS).count(),
+            "approver_request_chart": request_status_chart(all_requests),
+            "approver_document_chart": document_chart,
+            "approver_review_count": DocumentReview.objects.count(),
+            "approver_review_remarks": DocumentReview.objects.exclude(remarks="").count(),
+            "approver_document_decisions": DocumentApproval.objects.count(),
+            "approver_request_decisions": all_requests.filter(approval_decision_at__isnull=False).count(),
+            "approver_published_documents": published,
+        })
+
+    elif role in {Role.USER, Role.MANAGER}:
+        own_requests = ComplianceRequest.objects.filter(requester=request.user)
+        # The employee center must show only documents actually created or uploaded by this user.
+        own_docs = list(Document.objects.filter(
+            Q(created_by=request.user) | Q(versions__uploaded_by=request.user),
+            archived_at__isnull=True,
+        ).distinct().select_related("published_version").order_by("-created_at"))
+        own_document_rows = []
+        own_status_counts = {
+            "Published": 0,
+            "Rejected": 0,
+            "Awaiting final approval": 0,
+            "Compliance review": 0,
+            "Revision required": 0,
+            "Draft / preparation": 0,
+            "Archived / blocked": 0,
+        }
+        for document in own_docs:
+            latest_version = document.versions.order_by("-uploaded_at", "-pk").first()
+            latest_approval = DocumentApproval.objects.filter(version=latest_version).order_by("-created_at", "-pk").first() if latest_version else None
+            if latest_approval and latest_approval.decision == DocumentApproval.Decision.REJECTED:
+                status_label, status_tone = "Rejected", "red"
+            elif document.published_version_id or document.state == Document.State.PUBLISHED:
+                status_label, status_tone = "Published", "green"
+            elif document.state == Document.State.PENDING_APPROVAL:
+                status_label, status_tone = "Awaiting final approval", "amber"
+            elif document.state in (Document.State.UNDER_REVIEW, Document.State.REVIEW_ACCEPTED):
+                status_label, status_tone = "Compliance review", "cyan"
+            elif document.state == Document.State.ARCHIVED:
+                status_label, status_tone = "Archived / blocked", "gray"
+            elif document.state == Document.State.REVISION_REQUIRED:
+                status_label, status_tone = "Revision required", "red"
+            else:
+                status_label, status_tone = "Draft / preparation", "gray"
+            chart_bucket = status_label if status_label in own_status_counts else "Draft / preparation"
+            own_status_counts[chart_bucket] += 1
+            own_document_rows.append({
+                "document": document,
+                "latest_version": latest_version,
+                "status_label": status_label,
+                "status_tone": status_tone,
+            })
+        own_doc_total = len(own_docs)
+        own_doc_chart = [
+            chart_item(label, count, own_doc_total, tone)
+            for label, count, tone in [
+                ("Published", own_status_counts["Published"], "green"),
+                ("Rejected", own_status_counts["Rejected"], "red"),
+                ("Awaiting final approval", own_status_counts["Awaiting final approval"], "amber"),
+                ("Compliance review", own_status_counts["Compliance review"], "cyan"),
+                ("Revision required", own_status_counts["Revision required"], "red"),
+                ("Draft / preparation", own_status_counts["Draft / preparation"], "gray"),
+                ("Archived / blocked", own_status_counts["Archived / blocked"], "gray"),
+            ]
+        ]
+        published = list(published_versions().order_by("document__title")[:6])
+        context.update({
+            # The Manager/legacy User dashboard must count only published documents
+            # that this account is allowed to read (public + matching audience).
+            # Compliance, Approver and System Admin retain their all-document totals
+            # in their own dashboard branches above.
+            "published_count": visible_documents_for(request.user).count(),
+            "my_requests_count": own_requests.count(),
+            "my_open_requests_count": own_requests.exclude(status__in=[
+                ComplianceRequest.Status.COMPLETED,
+                ComplianceRequest.Status.CANCELLED,
+                ComplianceRequest.Status.REJECTED,
+            ]).count(),
+            "my_open_readings_count": ReadingRecord.objects.filter(user=request.user, status=ReadingRecord.Status.IN_PROGRESS).count(),
+            "my_document_total": own_doc_total,
+            "my_own_published_count": own_status_counts["Published"],
+            "my_own_workflow_count": sum(own_status_counts[key] for key in ["Rejected", "Awaiting final approval", "Compliance review", "Revision required", "Draft / preparation"]),
+            "my_document_chart": own_doc_chart,
+            "my_request_chart": request_status_chart(own_requests),
+            "my_owned_documents": own_document_rows[:8],
+            "my_approved_requests": own_requests.filter(status__in=[ComplianceRequest.Status.APPROVED, ComplianceRequest.Status.DOCUMENT_APPROVED, ComplianceRequest.Status.COMPLETED]).count(),
+            "my_rejected_requests": own_requests.filter(status=ComplianceRequest.Status.REJECTED).count(),
+            "my_under_review_requests": own_requests.filter(status__in=[ComplianceRequest.Status.PENDING_APPROVAL, ComplianceRequest.Status.IN_PROGRESS, ComplianceRequest.Status.UNDER_REVIEW, ComplianceRequest.Status.DOCUMENT_PENDING_APPROVAL]).count(),
+        })
+
+    return render(request, "compliance/dashboard.html", context)
 
 @login_required
 def published_documents(request):
     require(request, *READ_ROLES)
     q = request.GET.get("q", "").strip()
-    qs = (Document.objects.filter(
-        published_version__isnull=False,
-        archived_at__isnull=True,
-    ).select_related("published_version")
-       .order_by("-published_version__publication_at", "-pk"))
+    # Attach the current account's reading state to each published document so
+    # the user can see it from the list without opening the document.
+    user_reading = ReadingRecord.objects.filter(
+        user=request.user,
+        version_id=OuterRef("published_version_id"),
+    )
+    qs = visible_documents_for(request.user).annotate(
+        my_read_status=Subquery(user_reading.values("status")[:1]),
+        my_read_completed_at=Subquery(user_reading.values("completed_at")[:1]),
+        employee_acknowledgment_count=Count(
+            "published_version__acknowledgments", distinct=True
+        ),
+    ).order_by("-published_version__publication_at", "-pk")
     if q:
         qs = qs.filter(Q(title__icontains=q) | Q(document_number__icontains=q) | Q(category__icontains=q))
     return render(request, "compliance/documents.html", {"documents": qs, "q": q})
@@ -122,6 +367,8 @@ def read_document(request, pk):
         published_version__isnull=False,
         archived_at__isnull=True,
     )
+    if not can_read_document(request.user, doc):
+        raise Http404
     version = doc.published_version
     record, created = ReadingRecord.objects.get_or_create(
         user=request.user,
@@ -144,6 +391,7 @@ def read_document(request, pk):
 
 @login_required
 def finish_reading(request, pk):
+    """Open the individual acknowledgment form; do not treat the shared login as proof."""
     require(request, *READ_ROLES)
     if request.method != "POST":
         raise PermissionDenied
@@ -152,15 +400,113 @@ def finish_reading(request, pk):
         pk=pk,
         status=DocumentVersion.Status.PUBLISHED,
         document__published_version=pk,
+        document__archived_at__isnull=True,
     )
-    rec = get_object_or_404(ReadingRecord, user=request.user, version=version)
-    if rec.status != ReadingRecord.Status.COMPLETED:
-        rec.status = ReadingRecord.Status.COMPLETED
-        rec.completed_at = timezone.now()
-        rec.save(update_fields=["status", "completed_at"])
-        audit(request, "FINISHED_READING", version)
-    messages.success(request, "Reading completion recorded.")
-    return redirect("read_document", version.document_id)
+    get_object_or_404(ReadingRecord, user=request.user, version=version)
+    return redirect("acknowledge_document", pk=version.pk)
+
+
+@login_required
+def acknowledge_document(request, pk):
+    require(request, *READ_ROLES)
+    version = get_object_or_404(
+        DocumentVersion.objects.select_related("document"),
+        pk=pk, status=DocumentVersion.Status.PUBLISHED,
+        document__published_version=pk, document__archived_at__isnull=True,
+    )
+    if not can_read_document(request.user, version.document):
+        raise Http404
+    profile = getattr(request.user, "profile", None)
+    assigned_department = getattr(profile, "department", None)
+    departments = Department.objects.filter(active=True).order_by("name")
+    error = ""
+    values = {"employee_name": "", "employee_id": "", "department_id": str(assigned_department.pk) if assigned_department else ""}
+    if request.method == "POST":
+        values["employee_name"] = " ".join(request.POST.get("employee_name", "").split())
+        values["employee_id"] = request.POST.get("employee_id", "").strip().upper()
+        submitted_department = request.POST.get("department", "").strip()
+        if request.POST.get("confirmation") != "yes":
+            error = "You must confirm that you have read the document before submitting."
+        if assigned_department:
+            department = assigned_department
+            values["department_id"] = str(assigned_department.pk)
+        else:
+            department = departments.filter(pk=submitted_department).first()
+            values["department_id"] = submitted_department
+        if not error and not values["employee_name"]:
+            error = "Enter the employee's full name."
+        elif not error and not values["employee_id"]:
+            error = "Enter the employee ID."
+        elif not error and len(values["employee_id"]) > 80:
+            error = "Employee ID must be 80 characters or fewer."
+        elif not error and department is None:
+            error = "Select a valid active department."
+        if not error:
+            try:
+                with transaction.atomic():
+                    ack = DocumentAcknowledgment.objects.create(
+                        employee_id=values["employee_id"],
+                        employee_name=values["employee_name"],
+                        department=department,
+                        document=version.document,
+                        version=version,
+                        document_title=version.document.title,
+                        document_version_label=version.version,
+                        submitted_by=request.user,
+                        confirmation_text_version="1",
+                    )
+                    rec, _ = ReadingRecord.objects.get_or_create(
+                        user=request.user, version=version,
+                        defaults={"status": ReadingRecord.Status.IN_PROGRESS, "started_at": timezone.now()},
+                    )
+                    if rec.status != ReadingRecord.Status.COMPLETED:
+                        rec.status = ReadingRecord.Status.COMPLETED
+                        rec.completed_at = timezone.now()
+                        rec.save(update_fields=["status", "completed_at"])
+                    audit(request, "DOCUMENT_ACKNOWLEDGMENT_SUBMITTED", version, details={
+                        "acknowledgment_id": ack.pk, "employee_id": ack.employee_id,
+                        "department": department.name, "document_title": ack.document_title,
+                        "document_version": ack.document_version_label,
+                    })
+                    ack.audit_reference = f"ACK-{ack.pk}"
+                    ack.save(update_fields=["audit_reference"])
+            except Exception as exc:
+                # Unique constraint protects against double-clicks and concurrent submissions.
+                if DocumentAcknowledgment.objects.filter(employee_id=values["employee_id"], version=version).exists():
+                    error = "Acknowledgment Already Submitted. This employee ID has already acknowledged this document version."
+                else:
+                    raise
+            if not error:
+                messages.success(request, "Individual reading acknowledgment submitted successfully. The document list now shows its reading status.")
+                return redirect("published_documents")
+    already_count = DocumentAcknowledgment.objects.filter(version=version).count()
+    return render(request, "compliance/acknowledge_document.html", {
+        "version": version, "document": version.document, "departments": departments,
+        "assigned_department": assigned_department, "values": values, "error": error,
+        "already_count": already_count,
+    })
+
+
+@login_required
+def acknowledgment_register(request):
+    require(request, Role.COMPLIANCE)
+    qs = DocumentAcknowledgment.objects.select_related("department", "document", "version", "submitted_by")
+    q = request.GET.get("q", "").strip()
+    department_id = request.GET.get("department", "").strip()
+    if q:
+        qs = qs.filter(Q(employee_id__icontains=q) | Q(employee_name__icontains=q) | Q(document_title__icontains=q))
+    if department_id.isdigit():
+        qs = qs.filter(department_id=int(department_id))
+    if request.GET.get("format") == "csv":
+        audit(request, "ACKNOWLEDGMENT_REPORT_GENERATION", details={"format": "CSV", "query": q, "department_id": department_id})
+        return acknowledgment_csv(qs[:10000])
+    if request.GET.get("format") == "pdf":
+        audit(request, "ACKNOWLEDGMENT_REPORT_GENERATION", details={"format": "PDF", "query": q, "department_id": department_id})
+        return acknowledgment_pdf(qs[:1000], request.user)
+    return render(request, "compliance/acknowledgment_register.html", {
+        "acknowledgments": qs[:1000], "q": q, "department_id": department_id,
+        "departments": Department.objects.filter(active=True).order_by("name"),
+    })
 
 
 @login_required
@@ -171,7 +517,10 @@ def stream_document(request, pk):
         pk=pk,
         status=DocumentVersion.Status.PUBLISHED,
         document__published_version=pk,
+        document__archived_at__isnull=True,
     )
+    if not can_read_document(request.user, version.document):
+        raise Http404
     preview = version_preview(version)
     if not preview:
         raise Http404
@@ -223,10 +572,14 @@ def compliance_documents(request):
 
 @login_required
 def document_create(request):
-    # Direct document creation is intentionally disabled. Compliance must use the same request workflow as every other requester.
+    """Legacy endpoint: new controlled documents must begin as a request."""
     require(request, Role.COMPLIANCE)
+    messages.info(
+        request,
+        "New controlled documents must be submitted through a New Document Request. "
+        "Direct upload is reserved for documents that already existed before this system.",
+    )
     return redirect("new_request")
-
 
 @login_required
 def upload_existing_document(request):
@@ -243,26 +596,34 @@ def upload_existing_document(request):
                         document_number=form.cleaned_data["document_number"].strip(),
                         category=form.cleaned_data["category"].strip(),
                         source=Document.Source.EXISTING,
-                        state=Document.State.DRAFT,
+                        state=Document.State.PUBLISHED,
                         created_by=request.user,
+                        audience=form.cleaned_data["audience"],
+                        audience_department=form.cleaned_data.get("audience_department"),
                     )
                     version = create_version(
                         doc,
                         form.cleaned_data["original_file"],
                         form.cleaned_data["version"].strip(),
                         request.user,
-                        DocumentVersion.Status.UNDER_REVIEW,
+                        DocumentVersion.Status.PUBLISHED,
                     )
-                    doc.state = Document.State.UNDER_REVIEW
-                    doc.save(update_fields=["state"])
+                    version.publication_at = timezone.now()
+                    version.published_by = request.user
+                    version.save(update_fields=["publication_at", "published_by"])
+                    doc.current_version = version
+                    doc.published_version = version
+                    doc.save(update_fields=["current_version", "published_version"])
+                    if form.cleaned_data["audience"] == Document.Audience.SELECTED_MANAGERS:
+                        doc.audience_departments.set(form.cleaned_data["audience_departments"])
                     audit(
                         request,
                         "EXISTING_DOCUMENT_UPLOAD",
                         version,
                         {"document": doc.pk, "version": version.version, "source": Document.Source.EXISTING},
                     )
-                messages.success(request, "Existing document uploaded and sent to Compliance review.")
-                return redirect("review_queue")
+                messages.success(request, "Existing document published with the selected audience. No review or approval stage was required.")
+                return redirect("document_detail", pk=doc.pk)
             except ValueError as exc:
                 form.add_error("original_file", str(exc))
     else:
@@ -276,7 +637,11 @@ def document_detail(request, pk):
     require(request, Role.COMPLIANCE)
     doc = get_object_or_404(Document.objects.select_related("current_version", "published_version"), pk=pk)
     versions = doc.versions.select_related("uploaded_by", "published_by").prefetch_related("reviews__reviewer", "approvals__approver")
-    return render(request, "compliance/document_detail.html", {"document": doc, "versions": versions})
+    return render(request, "compliance/document_detail.html", {
+        "document": doc, "versions": versions,
+        "audience_choices": Document.Audience.choices,
+        "departments": Department.objects.filter(active=True).order_by("name"),
+    })
 
 
 @login_required
@@ -456,7 +821,7 @@ def approve_document(request, pk):
 @login_required
 def requests_list(request):
     role = request.user.profile.role
-    if role == Role.USER:
+    if role in {Role.USER, Role.MANAGER}:
         qs = ComplianceRequest.objects.filter(requester=request.user)
     elif role in {Role.APPROVER, Role.COMPLIANCE}:
         qs = ComplianceRequest.objects.all()
@@ -472,12 +837,21 @@ def next_request_number():
 
 @login_required
 def new_request(request):
-    require(request, Role.USER, Role.COMPLIANCE)
+    require(request, Role.USER, Role.MANAGER, Role.COMPLIANCE)
+    profile = getattr(request.user, "profile", None)
+    account_department = getattr(profile, "department", None)
+    if not account_department:
+        messages.error(request, "Your CMS account does not have a department assigned. Contact the system administrator before submitting a request.")
+        return redirect("requests")
     if request.method == "POST":
         form = NewDocumentRequestForm(request.POST)
         if form.is_valid():
             req = form.save(commit=False)
             req.request_type = ComplianceRequest.RequestType.NEW
+            # Store the new/adoption selection in the existing request-change
+            # field for NEW requests; no database migration is required.
+            req.requested_change = form.cleaned_data["request_kind"]
+            req.department = account_department
             req.requester = request.user
             req.request_number = next_request_number()
             req.save()
@@ -487,19 +861,32 @@ def new_request(request):
             messages.success(request, "New document request submitted to Approver and Compliance.")
             return redirect("requests")
     else:
-        form = NewDocumentRequestForm(initial={"department": request.user.profile.department})
-    return render(request, "compliance/request_form.html", {"form": form, "title": "New Document Request"})
+        form = NewDocumentRequestForm(initial={"request_kind": "NEW_DOCUMENT"})
+    return render(request, "compliance/request_form.html", {
+        "form": form,
+        "title": "Document Creation or Adoption Request Form",
+        "requester_name": request.user.get_full_name() or request.user.username,
+        "requester_department": account_department.name,
+        "is_new_document_request": True,
+    })
 
 
 @login_required
 def change_request(request):
-    require(request, Role.USER, Role.COMPLIANCE)
+    # All roles authorized to submit requests use this same form and validation.
+    require(request, Role.USER, Role.MANAGER, Role.COMPLIANCE)
+    profile = getattr(request.user, "profile", None)
+    if not profile or not profile.department_id:
+        messages.error(request, "Your account does not have a department assigned. Please contact the system administrator.")
+        return redirect("dashboard")
+
     if request.method == "POST":
-        form = ChangeRequestForm(request.POST)
+        form = ChangeRequestForm(request.POST, user=request.user)
         if form.is_valid():
             req = form.save(commit=False)
             req.request_type = ComplianceRequest.RequestType.CHANGE
             req.requester = request.user
+            req.department = profile.department
             req.request_number = next_request_number()
             req.save()
             ComplianceRequestHistory.objects.create(request=req, to_status=req.status, actor=request.user, comments="Submitted by requester.")
@@ -508,8 +895,8 @@ def change_request(request):
             messages.success(request, "Change request submitted to Approver and Compliance.")
             return redirect("requests")
     else:
-        form = ChangeRequestForm(initial={"department": request.user.profile.department})
-    return render(request, "compliance/request_form.html", {"form": form, "title": "Document Change Request"})
+        form = ChangeRequestForm(user=request.user)
+    return render(request, "compliance/change_request_form.html", {"form": form, "title": "Document Change Request"})
 
 
 @login_required
@@ -533,7 +920,7 @@ def process_request(request, pk):
     )
 
     role = request.user.profile.role
-    if role not in {Role.USER, Role.COMPLIANCE}:
+    if role not in {Role.USER, Role.MANAGER, Role.COMPLIANCE}:
         raise PermissionDenied
 
     # Only the requester uploads the controlled file. Compliance observes
@@ -584,6 +971,7 @@ def process_request(request, pk):
                             doc.created_by = req.requester
                             doc.state = Document.State.DRAFT
                             doc.save()
+                            meta.save_m2m()
                     else:
                         doc = req.existing_document
                         if not doc or doc.archived_at:
@@ -648,7 +1036,7 @@ def process_request(request, pk):
                     "Document uploaded and sent to Compliance for review.",
                 )
                 return redirect(
-                    "requests" if role == Role.USER else "compliance_queue"
+                    "requests" if role in {Role.USER, Role.MANAGER} else "compliance_queue"
                 )
 
             except ValueError as exc:
@@ -712,6 +1100,40 @@ def publish_document(request, pk):
 
 
 @login_required
+def set_document_audience(request, pk):
+    """Compliance classifies existing documents and can publish existing-source versions directly."""
+    require(request, Role.COMPLIANCE)
+    if request.method != "POST":
+        raise PermissionDenied
+    doc = get_object_or_404(Document, pk=pk)
+    form = DocumentAudienceForm(request.POST)
+    if form.is_valid():
+        doc.audience = form.cleaned_data["audience"]
+        doc.audience_department = form.cleaned_data.get("audience_department")
+        doc.save(update_fields=["audience", "audience_department"])
+        if doc.audience == Document.Audience.SELECTED_MANAGERS:
+            doc.audience_departments.set(form.cleaned_data["audience_departments"])
+        else:
+            doc.audience_departments.clear()
+        doc.audience_managers.clear()
+        if doc.source == Document.Source.EXISTING and doc.current_version and not doc.published_version:
+            version = doc.current_version
+            version.status = DocumentVersion.Status.PUBLISHED
+            version.publication_at = timezone.now()
+            version.published_by = request.user
+            version.save(update_fields=["status", "publication_at", "published_by"])
+            doc.published_version = version
+            doc.state = Document.State.PUBLISHED
+            doc.archived_at = None
+            doc.save(update_fields=["published_version", "state", "archived_at"])
+        audit(request, "DOCUMENT_AUDIENCE_CLASSIFIED", doc, {"audience": doc.audience, "department": doc.audience_department.name if doc.audience_department else None})
+        messages.success(request, "Document audience saved. Existing documents are published directly when eligible.")
+    else:
+        messages.error(request, "Could not save audience settings: " + "; ".join(sum(form.errors.values(), [])))
+    return redirect("document_detail", pk=pk)
+
+
+@login_required
 def edit_document(request, pk):
     require(request, Role.COMPLIANCE)
     doc = get_object_or_404(Document, pk=pk)
@@ -719,6 +1141,11 @@ def edit_document(request, pk):
         form = DocumentMetaForm(request.POST, instance=doc)
         if form.is_valid():
             saved = form.save()
+            if saved.audience == Document.Audience.SELECTED_MANAGERS:
+                saved.audience_departments.set(form.cleaned_data["audience_departments"])
+            else:
+                saved.audience_departments.clear()
+            saved.audience_managers.clear()
             audit(request, "PUBLISHED_DOCUMENT_EDIT", saved)
             messages.success(request, "Document information updated.")
             return redirect("document_detail", pk)
@@ -766,16 +1193,63 @@ def delete_document(request, pk):
     if request.method != "POST":
         raise PermissionDenied
     with transaction.atomic():
-        doc = get_object_or_404(Document.objects.select_for_update(), pk=pk)
-        # Preserve request/audit history while removing the controlled document and all file versions.
+        doc = get_object_or_404(
+            Document.objects.select_for_update().prefetch_related("versions__approvals"),
+            pk=pk,
+        )
+
+        # Keep request history, reading/acknowledgment records, and an audit snapshot.
+        # DocumentApproval.version is PROTECT, so its rows must be handled before
+        # deleting versions. Their decision details are copied into the audit log.
         ComplianceRequest.objects.filter(existing_document=doc).update(existing_document=None)
-        ComplianceRequest.objects.filter(related_document=doc).update(related_document=None, related_version=None)
+        ComplianceRequest.objects.filter(related_document=doc).update(
+            related_document=None,
+            related_version=None,
+        )
+
         versions = list(doc.versions.all())
-        title = doc.title
+        version_ids = [version.pk for version in versions]
+        approval_history = []
         for version in versions:
-            delete_version(version)
-        audit(request, "DOCUMENT_DELETE", details={"document": doc.pk, "title": title})
+            for approval in version.approvals.select_related("approver").all():
+                approval_history.append({
+                    "version": version.version,
+                    "decision": approval.decision,
+                    "approver": approval.approver.get_username(),
+                    "remarks": approval.remarks,
+                    "created_at": approval.created_at.isoformat(),
+                })
+
+        file_deletions = []
+        for version in versions:
+            for field in (version.preview_file, version.original_file):
+                if field and field.name:
+                    file_deletions.append((field.storage, field.name))
+
+        title = doc.title
+        audit(
+            request,
+            "DOCUMENT_DELETE",
+            doc,
+            {
+                "document": doc.pk,
+                "title": title,
+                "deleted_version_ids": version_ids,
+                "approval_history": approval_history,
+            },
+        )
+
+        # Remove PROTECT references only after preserving their full history above.
+        DocumentApproval.objects.filter(version_id__in=version_ids).delete()
+
+        # Delete database rows first. Physical files are removed only after commit,
+        # so a rolled-back deletion never leaves a live record with missing files.
+        for version in versions:
+            version.delete()
         doc.delete()
+
+        for storage, name in file_deletions:
+            transaction.on_commit(lambda storage=storage, name=name: storage.delete(name))
     messages.success(request, "Document and all of its stored versions have been deleted.")
     return redirect("compliance_documents")
 

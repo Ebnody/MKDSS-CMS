@@ -1,1 +1,77 @@
-{% extends "compliance/base.html" %}{% block content %}<section class="card"><h1>{{title}}</h1><form method="post">{% csrf_token %}{{form.as_p}}<button class="primary">Submit Request</button></form></section>{% endblock %}
+{% extends "compliance/base.html" %}
+{% block content %}
+<style>
+  /* Keep request-type radio controls isolated from the CMS global form styles. */
+  .mkdss-request-kind { margin: 14px 0 24px; }
+  .mkdss-request-kind .mkdss-radio-list {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    justify-content: flex-start !important;
+    gap: 12px !important;
+    margin: 10px 0 0 !important;
+    padding: 0 !important;
+  }
+  .mkdss-request-kind .mkdss-radio-option {
+    display: inline-flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 10px !important;
+    width: auto !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 2px 0 !important;
+    text-align: left !important;
+    font-weight: 500 !important;
+    line-height: 1.5 !important;
+    cursor: pointer;
+  }
+  .mkdss-request-kind .mkdss-radio-option input[type="radio"] {
+    display: inline-block !important;
+    flex: 0 0 16px !important;
+    width: 16px !important;
+    height: 16px !important;
+    min-width: 16px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    accent-color: #245b8f;
+    vertical-align: middle !important;
+  }
+  .mkdss-request-kind .mkdss-radio-option span { display: inline !important; }
+</style>
+<section class="card">
+  <h1>{{ title }}</h1>
+  <form method="post">{% csrf_token %}
+    {% if is_new_document_request %}
+      <h2>PART 1: TO BE COMPLETED BY THE REQUESTER</h2>
+      <p><strong>Requester:</strong> {{ requester_name }}</p>
+      <p><strong>Department:</strong> {{ requester_department }}</p>
+      <div class="mkdss-request-kind">
+        <p><strong>Please identify the type of request by marking one:</strong></p>
+        {{ form.request_kind.errors }}
+        <div class="mkdss-radio-list" role="radiogroup" aria-label="Request type">
+          {% for choice in form.request_kind %}
+            <label class="mkdss-radio-option" for="{{ choice.id_for_label }}">
+              {{ choice.tag }}<span>{{ choice.choice_label }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+      {% for field in form %}
+        {% if field.name != "request_kind" %}
+          <div class="form-field">
+            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            {% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}
+            {{ field.errors }}
+          </div>
+        {% endif %}
+      {% endfor %}
+    {% else %}
+      {{ form.as_p }}
+    {% endif %}
+    <button class="primary" type="submit">Submit Request</button>
+  </form>
+</section>
+{% endblock %}

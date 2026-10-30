@@ -1,0 +1,21 @@
+{% extends "compliance/base.html" %}
+{% block content %}
+<section class="card">
+  <h1>Document Change Request Form</h1>
+  <p><strong>Requester:</strong> {{ request.user.get_full_name|default:request.user.username }}</p>
+  <p><strong>Department:</strong> {{ request.user.profile.department }}</p>
+  <form method="post">
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="errorlist">{{ form.non_field_errors }}</div>{% endif %}
+    {% for field in form %}
+      <div class="form-group" style="margin-bottom: 18px;">
+        <label for="{{ field.id_for_label }}"><strong>{{ field.label }}</strong></label>
+        {{ field }}
+        {% if field.help_text %}<small class="helptext">{{ field.help_text }}</small>{% endif %}
+        {% for error in field.errors %}<div class="errorlist">{{ error }}</div>{% endfor %}
+      </div>
+    {% endfor %}
+    <button class="primary" type="submit">Submit Change Request</button>
+  </form>
+</section>
+{% endblock %}

@@ -10,6 +10,8 @@ urlpatterns = [
     path("documents/<int:pk>/read/", views.read_document, name="read_document"),
     path("versions/<int:pk>/stream/", views.stream_document, name="stream_document"),
     path("versions/<int:pk>/finish/", views.finish_reading, name="finish_reading"),
+    path("versions/<int:pk>/acknowledge/", views.acknowledge_document, name="acknowledge_document"),
+    path("reading-acknowledgments/", views.acknowledgment_register, name="acknowledgment_register"),
 
     # Compliance document control.
     path("documents/control/", views.compliance_documents, name="compliance_documents"),
@@ -18,6 +20,7 @@ urlpatterns = [
     path("documents/<int:pk>/", views.document_detail, name="document_detail"),
     path("documents/<int:pk>/edit/", views.edit_document, name="edit_document"),
     path("documents/<int:pk>/publish/", views.publish_document, name="publish_document"),
+    path("documents/<int:pk>/audience/", views.set_document_audience, name="set_document_audience"),
     path("documents/<int:pk>/block/", views.block_document, name="block_document"),
     path("documents/<int:pk>/unblock/", views.unblock_document, name="unblock_document"),
     path("documents/<int:pk>/delete/", views.delete_document, name="delete_document"),
